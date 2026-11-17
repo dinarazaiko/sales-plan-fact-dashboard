@@ -1,32 +1,3 @@
-name: Отчёт в Telegram — отстающие по темпу
-
-on:
-  # каждый раз, когда обновляется выгрузка на сайте
-  push:
-    branches: [main]
-    paths: ["daily/data.json"]
-  # кнопка Run workflow на вкладке Actions
-  workflow_dispatch:
-  # по будням в 09:40 по Алматы (04:40 UTC) — уберите #, если нужна рассылка по расписанию
-  # schedule:
-  #   - cron: "40 4 * * 1-5"
-
-jobs:
-  report:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install openpyxl
-      - name: Собрать и отправить отчёт
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SITE_URL: https://dinarazaiko.github.io/sales-plan-fact-dashboard/daily/
-        run: python scripts/telegram_report.py --data daily/data.json --send > /dev/null
-
 #!/usr/bin/env python3
 """Отчёт «Отстающие по темпу» для Telegram-бота.
 
