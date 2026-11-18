@@ -115,9 +115,28 @@ td.fc{font-weight:700}
 #empTable td.who b{font-size:14px}
 #empTable .st1{left:44px}
 #empTable td.cmc{min-width:280px;width:320px;padding:4px 6px;cursor:default}
-textarea.cm{width:100%;min-height:34px;resize:vertical;font:inherit;font-size:13.5px;line-height:1.35;padding:6px 8px;border:1px solid var(--grid);border-radius:7px;background:var(--surface);color:var(--ink);white-space:pre-wrap;display:block}
-textarea.cm:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent;background:var(--card)}
-textarea.cm.has{border-color:var(--axis);background:var(--card)}
+.cmh{white-space:normal;text-align:left;margin-bottom:5px}
+.cm-last{font-size:13.5px;line-height:1.35;color:var(--ink);white-space:pre-wrap}
+.cm-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+.cm-meta a{color:var(--accent);text-decoration:none;cursor:pointer}
+.cm-empty{font-size:12px;color:var(--muted)}
+.cmf{display:flex;gap:4px;align-items:stretch}
+.cmi{flex:1;min-width:0;font:inherit;font-size:13.5px;padding:5px 8px;border:1px solid var(--grid);border-radius:7px;background:var(--surface);color:var(--ink)}
+.cmi:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent;background:var(--card)}
+.cmok{padding:4px 10px;font-size:12.5px;font-weight:620;background:var(--card);border-color:var(--border);color:var(--ink2);border-radius:7px;align-self:flex-start;min-height:30px}
+.cmf.dirty .cmok{background:var(--accent);border-color:var(--accent);color:#fff}
+.cmf{position:relative;flex-wrap:wrap}
+.cmsaved{flex-basis:100%;font-size:12px;font-weight:650;color:var(--high-ink);height:0;overflow:hidden;opacity:0;transition:opacity .2s}
+.cmsaved.on{height:auto;opacity:1;margin-top:2px}
+.cmsaved.bad{color:var(--low-ink)}
+.cmf.big .cmsaved{text-align:right}
+.cmf.dirty .cmi{border-color:var(--accent)}
+textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
+.cmf.big textarea.cmi{resize:vertical;overflow:auto}
+.cm-hist li.now{border-color:var(--axis)}
+.cmf.big{flex-direction:column}.cmf.big .cmi{font-size:14.5px;min-height:70px;resize:vertical}.cmf.big .cmok{align-self:flex-end;padding:7px 16px;font-size:14px}
+.cm-hist{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.cm-hist li{background:var(--card);border:1px solid var(--grid);border-radius:8px;padding:8px 10px;white-space:pre-wrap;font-size:14px}
 .cnt-line{font-size:13px;color:var(--ink2)}
 /* distribution */
 .dist-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 28px}
@@ -143,7 +162,7 @@ textarea.cm.has{border-color:var(--axis);background:var(--card)}
 .dr-sec{margin-bottom:18px}
 .dr-sec h3{font-size:14.5px;margin:0 0 8px;font-weight:640}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-textarea.cm.big{min-height:90px;font-size:14.5px}
+
 .kbd{font-size:11.5px;color:var(--muted)}
 /* misc */
 .tip{position:fixed;pointer-events:none;background:var(--card);color:var(--ink);border:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.14);border-radius:8px;padding:8px 10px;font-size:12.5px;z-index:60;display:none;max-width:320px}
@@ -426,42 +445,69 @@ function snapHas(s,i){ for(const k in s.v){ const a=s.v[k]; if(a&&a[2*i+1]!=null
 function prevSnap(i){ const list=curSnaps().filter(s=>s.date<S.model.date&&snapHas(s,i)); return list.length?list[list.length-1]:null; }
 const isLag=x=>x.fc3!=null&&x.fc3<0.8, isLow3=x=>x.avg!=null&&x.avg<0.8;
 
-/* ---------------- comments ---------------- */
-const CM_LS='salesPlanDaily.comments.v1';
-const cmId=L=>S.model.cur+'_'+L;
-// сохранённый комментарий важнее; если его нет — комментарий из файла-анализа (data.json → comments)
-const getCm=L=>{ const c=S.comments.get(cmId(L)); if(c) return c.text||''; const sd=S.seed; return sd&&sd.period===S.model.cur&&sd.items[L]||''; };
-const cmTimers=new Map(), cmQueue=new Map();
-function loadLocalComments(){ try{ const o=JSON.parse(localStorage.getItem(CM_LS)||'{}'); for(const [k,v] of Object.entries(o)) S.comments.set(k,v); }catch(e){} }
-function saveLocalComments(){ try{ const o={}; S.comments.forEach((v,k)=>{ if(v.text) o[k]=v; }); localStorage.setItem(CM_LS,JSON.stringify(o)); return true; }catch(e){ return false; } }
-function cmStatus(){ const n=filtered().filter(e=>getCm(e.L)).length;
-  $('cmState').textContent=(S.cmPending?'Сохраняю… · ':'')+`комментариев: ${n}`+(S.db?'':' (хранятся в этом браузере)'); }
-function onCmInput(ta){
-  const L=ta.dataset.l, text=ta.value; const id=cmId(L);
-  S.comments.set(id,{L,period:S.model.cur,text,at:new Date().toISOString()});
-  ta.classList.toggle('has',!!text.trim());
-  document.querySelectorAll(`textarea.cm[data-l="${CSS.escape(L)}"]`).forEach(o=>{ if(o!==ta){ o.value=text; o.classList.toggle('has',!!text.trim()); } });
-  clearTimeout(cmTimers.get(L)); cmTimers.set(L,setTimeout(()=>persistCm(L),700));
+/* ---------------- comments: история записей ----------------
+   Каждый комментарий — отдельная запись {L, period, text, at, by}. Ничего не перезаписывается:
+   новая запись добавляется сверху, старые остаются в истории.
+   claude.ai: записи в общей базе (коллекция cmlog), видны всем сразу. Иначе — в этом браузере. */
+const CMLOG_LS='salesPlanDaily.cmlog.v1', CM_LEGACY_LS='salesPlanDaily.comments.v1';
+S.cm=new Map(); S.names=new Map(); S.uid=null; S.user=null;
+function cmIndex(){ const by=new Map(); const cur=S.model.cur;
+  S.cm.forEach(e=>{ if(e.period!==cur) return; (by.get(e.L)||by.set(e.L,[]).get(e.L)).push(e); });
+  const sd=S.seed; if(sd&&sd.period===cur) for(const [L,t] of Object.entries(sd.items||{})) (by.get(L)||by.set(L,[]).get(L)).push({id:'seed_'+L,L,period:cur,text:t,at:null,src:'file'});
+  by.forEach(a=>a.sort((x,y)=>(y.at||'').localeCompare(x.at||''))); S.cmBy=by; }
+const cmList=L=>(S.cmBy&&S.cmBy.get(L))||[];
+const getCm=L=>{ const a=cmList(L); return a.length?(a[0].text||''):''; };
+const hasCm=L=>!!getCm(L).trim();
+const cmWhen=e=>{ if(!e.at) return ''; const d=new Date(e.at); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+const cmWho=e=>e.by?(S.names.get(e.by)||''):'';
+function cmMeta(e){ const w=cmWho(e); return [cmWhen(e),w].filter(Boolean).map(esc).join(' · ')+(e.failed?' · <span class="nodyn">не сохранено</span>':''); }
+// поле сразу заполнено текущим комментарием; правка + OK = новая версия, прежняя уходит в историю
+function cmForm(L,big){ const v=getCm(L);
+  return `<div class="cmf${big?' big':''}" data-l="${esc(L)}"><textarea rows="${big?3:1}" class="cmi" placeholder="Комментарий…" aria-label="Комментарий">${esc(v)}</textarea><button type="button" class="cmok">${big?'Сохранить':'OK'}</button><span class="cmsaved" aria-live="polite"></span></div>`; }
+function fitCm(t){ if(t.closest('.big')) return; t.style.height='auto'; t.style.height=Math.min(t.scrollHeight+2,140)+'px'; }
+function markDirty(t){ const f=t.closest('.cmf'); f.classList.toggle('dirty',t.value.trim()!==getCm(f.dataset.l).trim()); }
+function refreshCm(L){ document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"]`).forEach(f=>{ const t=f.querySelector('.cmi');
+    if(document.activeElement!==t&&!f.classList.contains('dirty')){ t.value=getCm(L); fitCm(t); } markDirty(t); });
+  if(S.card===L){ const h=$('cmHist'); if(h) h.innerHTML=cmHistory(L); } cmStatus(); }
+function cmHistory(L){ const a=cmList(L); if(a.length<2&&!(a[0]&&a[0].at)) return '<p class="muted" style="margin:6px 0">Изменений пока не было.</p>';
+  return '<h3 style="margin-top:12px">История изменений</h3><ol class="cm-hist">'+a.map((e,k)=>`<li class="${k===0?'now':''}"><div class="cm-meta">${k===0?'<b>сейчас</b>':''}${k===0&&cmMeta(e)?' · ':''}${cmMeta(e)||(k?'исходный комментарий':'')}</div><div>${e.text?esc(e.text):'<span class="muted">комментарий очищен</span>'}</div></li>`).join('')+'</ol>'; }
+function cmStatus(){ const n=filtered().filter(e=>hasCm(e.L)).length; const el=$('cmState'); if(!el) return;
+  el.textContent=(S.cmPending?'Сохраняю… · ':'')+`с комментариями: ${n}`+(S.db?'':' (новые записи хранятся в этом браузере)'); }
+function loadLocalCm(){
+  try{ const a=JSON.parse(localStorage.getItem(CMLOG_LS)||'[]'); a.forEach(e=>S.cm.set(e.id,e)); }catch(e){}
+  try{ const o=JSON.parse(localStorage.getItem(CM_LEGACY_LS)||'{}');      // комментарии из прошлой версии страницы
+    for(const v of Object.values(o)) if(v&&v.text&&v.L){ const id='legacy_'+v.period+'_'+v.L; if(!S.cm.has(id)) S.cm.set(id,{id,L:v.L,period:v.period,text:v.text,at:v.at||null}); } }catch(e){}
 }
-function persistCm(L){
-  cmTimers.delete(L); const id=cmId(L); const c=S.comments.get(id)||{L,period:S.model.cur,text:''};
-  if(!S.db){ if(!saveLocalComments()) toast('Не удалось сохранить комментарий в браузере'); cmStatus(); return; }
+function saveLocalCm(){ try{ const a=[]; S.cm.forEach(e=>{ if(!String(e.id).startsWith('legacy_')||true) a.push(e); }); localStorage.setItem(CMLOG_LS,JSON.stringify(a)); return true; }catch(e){ return false; } }
+function flashSaved(L,txt,bad){ document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"] .cmsaved`).forEach(el=>{ el.textContent=txt; el.classList.toggle('bad',!!bad); el.classList.add('on'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('on'),2500); }); }
+async function addComment(L,text){
+  text=String(text||'').trim(); if(text===getCm(L).trim()) return false;
+  const id=`${S.model.cur}_${L}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+  const e={id,L,period:S.model.cur,text,at:new Date().toISOString(),by:S.uid||null};
+  S.cm.set(id,e); cmIndex();
+  document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"]`).forEach(f=>{ f.classList.remove('dirty'); const t=f.querySelector('.cmi'); t.value=text; fitCm(t); });
+  refreshCm(L);
+  if(!S.db){ if(saveLocalCm()){ flashSaved(L,'✓ Сохранено'); toast('Комментарий сохранён'); } else { flashSaved(L,'✓ Сохранено в этом окне'); toast('Комментарий сохранён в этом окне — браузер не даёт хранить его после закрытия'); } return true; }
   S.cmPending++; cmStatus();
-  const prev=cmQueue.get(id)||Promise.resolve();
-  const p=prev.then(()=>S.db.doc('comments/'+id).set({L:c.L,period:c.period,text:c.text,at:c.at||new Date().toISOString()}))
-    .catch(err=>toast('Комментарий не сохранён: '+(err&&err.code||err)))
-    .finally(()=>{ S.cmPending--; cmStatus(); });
-  cmQueue.set(id,p);
+  try{ await S.db.collection('cmlog').doc(id).set({L:e.L,period:e.period,text:e.text,at:e.at,by:e.by}); flashSaved(L,'✓ Сохранено'); toast('Комментарий сохранён'); }
+  catch(err){ e.failed=true; refreshCm(L); flashSaved(L,'Не сохранено',true); toast('Комментарий не сохранён: '+(err&&err.code||err)); }
+  finally{ S.cmPending--; cmStatus(); }
+  return true;
 }
-function applyRemoteComment(id,data){
-  S.comments.set(id,data); if(!data||data.period!==S.model.cur) return;
-  document.querySelectorAll(`textarea.cm[data-l="${CSS.escape(data.L)}"]`).forEach(ta=>{ if(document.activeElement!==ta&&ta.value!==data.text){ ta.value=data.text||''; ta.classList.toggle('has',!!(data.text||'').trim()); } });
+async function resolveNames(){
+  if(!S.user) return; const ids=[...new Set([...S.cm.values()].map(e=>e.by).filter(Boolean))].filter(id=>!S.names.has(id)); if(!ids.length) return;
+  try{ const ps=await S.user.profiles(ids); let ch=false; for(const id of ids){ const n=(ps[id]&&ps[id].name)||''; S.names.set(id,n); if(n) ch=true; }
+    if(ch){ if(S.card){ const h=$('cmHist'); if(h) h.innerHTML=cmHistory(S.card); } } }catch(e){}
 }
 function subscribeComments(){
   if(!S.db) return;
-  try{ S.db.collection('comments').onSnapshot(snap=>{
-      for(const ch of snap.docChanges()){ const d=ch.doc.data(); if(ch.type==='removed'){ S.comments.delete(ch.doc.id); continue; } if(d&&d.L) applyRemoteComment(ch.doc.id,d); }
-      cmStatus(); if(S.view==='sotrudniki'&&(S.show==='cm'||S.show==='nocm'||S.sort.k==='cm')) renderEmps();
+  try{ S.db.collection('cmlog').onSnapshot(snap=>{
+      const touched=new Set();
+      for(const ch of snap.docChanges()){ const d=ch.doc.data(); const id=ch.doc.id;
+        if(ch.type==='removed'){ const o=S.cm.get(id); if(o) touched.add(o.L); S.cm.delete(id); continue; }
+        if(d&&d.L){ S.cm.set(id,{id,...d}); touched.add(d.L); } }
+      cmIndex(); touched.forEach(refreshCm); resolveNames();
+      if(S.view==='sotrudniki'&&(S.show==='cm'||S.show==='nocm'||S.sort.k==='cm')&&!document.activeElement?.matches?.('.cmi')) renderEmps();
     },err=>toast('Комментарии не обновляются: '+(err&&err.code||''))); }catch(e){}
 }
 
@@ -539,7 +585,7 @@ function renderNotes(){
     `«По текущему темпу» = % выполнения / доля прошедших дней — для сравнения.`,
     `Среднее за 3 месяца — среднее арифметическое месячных процентов; месяц без плана в него не входит. Группы: ниже 80%, 80–100%, 100% и выше.`,
     `ДРБ (СОВО и Online Sales) не относится к регионам: показан отдельно, в «Итого по регионам» не входит. Канал Online churn не учитывается.`,
-    `Комментарии привязаны к сотруднику и месяцу. ${S.seed&&S.seed.period===m.cur?`Изначально заполнены из файла анализа ШПД (${Object.keys(S.seed.items).length} записей: отпуск, увольнение, 80% и т. п.); их можно дописать или заменить. `:''}${S.db?'Они сохраняются для всех, кто открывает эту страницу, и обновляются у всех сразу.':'В этой версии страницы они хранятся в браузере, на котором введены; чтобы передать их, скачайте Excel.'}`
+    `Комментарии привязаны к сотруднику и месяцу. ${S.seed&&S.seed.period===m.cur?`Поле заполнено текущим комментарием (изначально — из файла анализа ШПД). Исправьте текст и нажмите «OK» (или Enter): новая версия сохранится с датой и временем, прежняя — в истории изменений в карточке сотрудника. `:''}${S.db?'Они сохраняются для всех, кто открывает эту страницу, и обновляются у всех сразу.':'В этой версии страницы они хранятся в браузере, на котором введены; чтобы передать их, скачайте Excel.'}`
   ].map(x=>`<li>${x}</li>`).join('');
 }
 
@@ -555,15 +601,15 @@ function empList(){
   if(q) L=L.filter(e=>(e.fio+' '+e.L+' '+e.np+' '+e.fil).toLowerCase().includes(q));
   if(S.show==='lag') L=L.filter(e=>pick(e,isLag));
   if(S.show==='low3') L=L.filter(e=>pick(e,isLow3));
-  if(S.show==='cm') L=L.filter(e=>getCm(e.L).trim());
-  if(S.show==='nocm') L=L.filter(e=>!getCm(e.L).trim());
+  if(S.show==='cm') L=L.filter(e=>hasCm(e.L));
+  if(S.show==='nocm') L=L.filter(e=>!hasCm(e.L));
   if(S.show==='nodyn') L=L.filter(e=>ii==null?IND.some((_,i)=>noDyn(e,i)):noDyn(e,ii));
   const {k,dir}=S.sort; const base=(a,b)=>(a.reg===DRB)-(b.reg===DRB)||a.reg.localeCompare(b.reg,'ru')||chIdx(a.chan)-chIdx(b.chan)||a.fio.localeCompare(b.fio,'ru');
   let cmp;
   if(k==='reg') cmp=(a,b)=>dir*base(a,b);
   else if(k==='fio') cmp=(a,b)=>dir*a.fio.localeCompare(b.fio,'ru');
   else if(k==='chan') cmp=(a,b)=>dir*(chIdx(a.chan)-chIdx(b.chan))||base(a,b);
-  else if(k==='cm') cmp=(a,b)=>dir*(getCm(a.L)?0:1)-dir*(getCm(b.L)?0:1)||base(a,b);
+  else if(k==='cm'){ const t=e=>{const x=cmList(e.L)[0]; return x?(x.at||'0'):'';}; cmp=(a,b)=>{const x=t(a),y=t(b); if(!x&&!y) return base(a,b); if(!x) return 1; if(!y) return -1; return dir*y.localeCompare(x)||base(a,b);}; }
   else { const t=k[0], i=+k.slice(1); const g=e=>t==='f'?e.ind[i].pc:t==='p'?e.ind[i].fc3:t==='l'?(e.ind[i].plan>0?e.ind[i].plan:null):t==='v'?(e.ind[i].plan>0?e.ind[i].fact:null):e.ind[i].avg;
     cmp=(a,b)=>{const x=g(a),y=g(b); if(x==null&&y==null) return base(a,b); if(x==null) return 1; if(y==null) return -1; return dir*(x-y)||base(a,b);}; }
   return L.sort(cmp);
@@ -584,13 +630,14 @@ function renderEmps(){
     const pv=d.prev?snapFact(d.prev,e.L,i):null; const inc=pv!=null?v-pv:null;
     const incH=inc==null?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn" title="Нет прироста с ${dShort(d.prev.date)}">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
     return `<td class="dyn${last?' lastd':''}">${last?`<b>${fmt(v)}</b>`:fmt(v)}${incH}</td>`; };
-  const rows=L.map((e,n)=>{ const cm=getCm(e.L);
+  const rows=L.map((e,n)=>{
     return `<tr data-l="${esc(e.L)}"><td class="no sticky">${n+1}</td><td class="l who sticky st1"><b>${esc(e.fio||e.L)}</b><span class="small">${esc(e.np||e.fil)} · ${esc(e.L)}</span></td><td class="l">${esc(e.reg===DRB?'ДРБ':e.reg)}</td><td class="l">${esc(e.chan)}</td>`+
       IS.map(i=>{ const x=e.ind[i]; const dyn=DS[i].length?DS[i].map((d,j)=>dynCell(e,i,d,j===DS[i].length-1)).join(''):`<td>${fmt(x.fact)}</td>`;
         return x.plan>0?`<td class="sep">${fmt(x.plan)}</td>${dyn}<td><span class="pcbig">${pct(x.pc)}</span>${fcChip(x.fc3)}<span class="small">3 мес ${pct(x.avg)}</span></td>`
         :`<td class="sep muted">нет плана</td>${dyn}<td class="muted">—</td>`; }).join('')+
-      `<td class="cmc sep"><textarea class="cm${cm.trim()?' has':''}" data-l="${esc(e.L)}" rows="1" placeholder="Комментарий…">${esc(cm)}</textarea></td></tr>`; }).join('');
+      `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; }).join('');
   $('empTable').innerHTML=hd+'<tbody>'+rows+'</tbody>';
+  requestAnimationFrame(()=>document.querySelectorAll('#empTable textarea.cmi').forEach(t=>{ if(t.value) fitCm(t); }));
   cmStatus();
 }
 
@@ -675,10 +722,9 @@ function renderCard(){
       const p=s.pts[kk]; const inc=kk>0?p.fact-s.pts[kk-1].fact:null;
       return `<td class="sep"><b>${fmt(p.fact)}</b> <span class="muted">${pct(p.pc)}</span>${inc!=null?`<span class="small ${inc>0?'delta-up':''}">${inc>0?'+':''}${fmt(inc)} с ${dShort(s.pts[kk-1].date)}</span>`:''}</td>`; }).join('')+`</tr>`; }
   ft+='</tbody></table></div>';
-  const cm=getCm(e.L);
   $('drBody').innerHTML=`
     <div class="dr-sec"><div class="chips">${chips}</div></div>
-    <div class="dr-sec"><h3>Комментарий</h3><textarea class="cm big${cm.trim()?' has':''}" data-l="${esc(e.L)}" placeholder="Что обсудили, какие меры, сроки…">${esc(cm)}</textarea></div>
+    <div class="dr-sec" id="cmSec"><h3>Комментарий</h3>${cmForm(e.L,true)}<div id="cmHist">${cmHistory(e.L)}</div></div>
     <div class="dr-sec"><h3>Выполнение по месяцам и прогноз</h3>${tbl}</div>
     <div class="dr-sec"><h3>Динамика ${MONTHS_GEN[m.cur%100-1]} по выгрузкам</h3><div class="legend" style="margin-bottom:6px">${chartLegend()}</div>
       ${ser.length?lineChart(ser,{W:820,H:260,compact:true}):'<p class="muted">Нет данных по выгрузкам.</p>'}${dates.length?ft:''}</div>`;
@@ -700,7 +746,7 @@ function setView(v){ if(!['svodka','sotrudniki','dinamika'].includes(v)) v='svod
   window.scrollTo(0,0); renderView(); }
 $('nav').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b) setView(b.dataset.v); });
 function renderView(){ if(!S.model) return; if(S.view==='svodka'){ renderTiles(); renderRC(); renderDist(); renderNotes(); } else if(S.view==='sotrudniki') renderEmps(); else renderDyn(); if(S.card) renderCard(); }
-function renderAll(){ renderHeader(); renderFilters(); renderView(); }
+function renderAll(){ cmIndex(); renderHeader(); renderFilters(); renderView(); }
 
 window.addEventListener('hashchange',()=>setView(location.hash.slice(1)));
 $('fReg').addEventListener('change',e=>{S.reg=e.target.value; renderView();});
@@ -716,9 +762,14 @@ $('dist').addEventListener('click',e=>{const s=e.target.closest('.dseg'); if(!s)
   S.sort={k:(S.distBy==='avg'?'a':'p')+s.dataset.i,dir:1}; renderFilters(); setView('sotrudniki'); });
 $('empTable').addEventListener('click',e=>{
   const th=e.target.closest('th[data-sort]'); if(th){ const k=th.dataset.sort; S.sort=S.sort.k===k?{k,dir:-S.sort.dir}:{k,dir:1}; renderEmps(); return; }
-  if(e.target.closest('textarea')) return; const tr=e.target.closest('tr[data-l]'); if(tr) openCard(tr.dataset.l); });
-document.addEventListener('input',e=>{ if(e.target.matches&&e.target.matches('textarea.cm')) onCmInput(e.target); });
-document.addEventListener('focusout',e=>{ if(e.target.matches&&e.target.matches('textarea.cm')){ const L=e.target.dataset.l; if(cmTimers.has(L)){ clearTimeout(cmTimers.get(L)); persistCm(L); } } });
+  if(e.target.closest('.cmc')) return; const tr=e.target.closest('tr[data-l]'); if(tr) openCard(tr.dataset.l); });
+async function saveCmForm(f){ const inp=f.querySelector('.cmi'); const btn=f.querySelector('.cmok');
+  if(inp.value.trim()===getCm(f.dataset.l).trim()){ flashSaved(f.dataset.l,'Без изменений'); return; }
+  btn.disabled=true; try{ await addComment(f.dataset.l,inp.value); } finally{ btn.disabled=false; } }
+document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('.cmok'); if(!b) return; e.preventDefault(); e.stopPropagation(); saveCmForm(b.closest('.cmf')); });
+document.addEventListener('input',e=>{ if(e.target.matches&&e.target.matches('textarea.cmi')){ fitCm(e.target); markDirty(e.target); } });
+document.addEventListener('keydown',e=>{ if(!(e.target.matches&&e.target.matches('textarea.cmi'))||e.key!=='Enter') return;
+  const big=!!e.target.closest('.big'); if((!big&&!e.shiftKey)||(big&&(e.ctrlKey||e.metaKey))){ e.preventDefault(); saveCmForm(e.target.closest('.cmf')); } });
 $('drClose').addEventListener('click',closeCard); $('drBg').addEventListener('click',closeCard);
 $('drPrev').addEventListener('click',()=>stepCard(-1)); $('drNext').addEventListener('click',()=>stepCard(1));
 document.addEventListener('keydown',e=>{ if(!S.card) return; const typing=e.target.matches&&e.target.matches('textarea,input,select');
@@ -739,7 +790,8 @@ $('btnExport').addEventListener('click',async()=>{
       cols.push([`${ind.name}: план`,e=>x(e).plan>0?x(e).plan:null,'#,##0']);
       for(const sn of dynSnaps(i).slice(-3)) cols.push([`${ind.name}: факт на ${dShort(sn.date)}`,e=>snapFact(sn,e.L,i),'#,##0']);
       cols.push([`${ind.name}: % на ${dShort(m.date)}`,e=>x(e).pc,'0%'],[`${ind.name}: прогноз (3 мес.)`,e=>x(e).fc3,'0%'],[`${ind.name}: ср. 3 мес.`,e=>x(e).avg,'0%']); });
-    cols.push(['Комментарий',e=>getCm(e.L)]);
+    cols.push(['Последний комментарий',e=>getCm(e.L)]);
+    cols.push(['История комментариев',e=>{ const a=cmList(e.L); return a.length>1||(a[0]&&a[0].at)?a.map(x=>`${[cmWhen(x),cmWho(x)].filter(Boolean).join(' ')||'исходный'}: ${x.text||'(очищен)'}`).join('\n'):''; }]);
     const head=cols.map(c=>c[0]);
     const aoa=[head]; L.forEach((e,n)=>aoa.push(cols.map(c=>{ const v=c[1](e,n); return v==null?null:v; })));
     const ws=XLSX.utils.aoa_to_sheet(aoa);
@@ -818,8 +870,9 @@ function loadLocal(){
 }
 async function loadFromDb(){
   let db=null; try{ db=await (window.claude&&window.claude.use?window.claude.use('db'):null); }catch(e){ db=null; }
-  if(!db){ loadLocalComments(); loadLocal(); renderAll(); return; }
+  if(!db){ loadLocalCm(); loadLocal(); cmIndex(); renderAll(); return; }
   S.db=db; renderNotes();
+  try{ S.user=await window.claude.use('user'); if(S.user) S.uid=await S.user.id(); }catch(e){ S.user=null; }
   const timer=setTimeout(()=>{ $('banner').textContent='Сохранённые выгрузки и комментарии пока не загрузились — показаны данные из исходных файлов.'; $('banner').classList.add('on'); },10000);
   try{
     const ss=await db.collection('snaps').get();
@@ -828,7 +881,7 @@ async function loadFromDb(){
     if(meta.exists){ const mt=meta.data();
       if(mt.date>=S.model.date){ const emps=[]; for(let k=0;k<mt.parts;k++){ const p=await db.doc('model/r'+k).get(); if(p.exists) emps.push(...p.data().rows.map(r=>({...r,m:JSON.parse(JSON.stringify(r.m))}))); }
         if(emps.length){ S.model=enrich({date:mt.date,cur:mt.cur,m3:mt.m3,emps}); S.source='загрузка '+dFmt(mt.date); } } }
-    clearTimeout(timer); $('banner').classList.remove('on'); renderAll();
+    clearTimeout(timer); $('banner').classList.remove('on'); cmIndex(); renderAll();
   }catch(err){ clearTimeout(timer); $('banner').textContent='Не удалось прочитать сохранённые выгрузки — показаны данные из исходных файлов.'; $('banner').classList.add('on'); }
   subscribeComments();
 }
@@ -841,6 +894,7 @@ async function loadFromDb(){
     for(const [d,v] of Object.entries(base.shpdHist||{})){ const o={}; for(const [L,a] of Object.entries(v)) o[L]=[null,null,a[0],a[1],null,null,null,null]; S.snaps.set(d,{date:d,period:model.cur,v:o}); }
     for(const [d,v] of Object.entries(base.snaps||{})) S.snaps.set(d,{date:d,period:model.cur,v});
     S.seed=base.comments||null;
+    cmIndex();
     S.snaps.set(model.date,snapFromModel(model));
     renderHeader(); renderFilters(); setView(location.hash.slice(1));
   }catch(err){ $('subtitle').textContent='Не удалось загрузить данные: '+err.message; return; }
