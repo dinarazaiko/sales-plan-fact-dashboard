@@ -51,6 +51,9 @@ button:disabled{opacity:.5;cursor:default}
 .nav button:hover{color:var(--ink);filter:none}
 .pcbig{font-size:15px;font-weight:700;display:block}
 td.dyn{background:var(--surface)}
+#empTable tr.tot td{position:sticky;z-index:2;background:var(--region-row)!important;border-bottom:2px solid var(--axis);cursor:default}
+#empTable tr.tot td.sticky{z-index:3}
+#empTable tr.tot td.who b{font-size:14.5px}
 th.dyn{font-weight:560}
 td.dyn.lastd{background:var(--card)}
 .nodyn{color:var(--low-ink);font-weight:650}
@@ -129,6 +132,9 @@ td.fc{font-weight:700}
 .cmsaved{flex-basis:100%;font-size:12px;font-weight:650;color:var(--high-ink);height:0;overflow:hidden;opacity:0;transition:opacity .2s}
 .cmsaved.on{height:auto;opacity:1;margin-top:2px}
 .cmsaved.bad{color:var(--low-ink)}
+.cmf.ro .cmi{background:transparent;border-color:transparent;cursor:default}
+#myName{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink)}
+#myName.need{border-color:var(--low);outline:2px solid var(--low-bg)}
 .cmf.big .cmsaved{text-align:right}
 .cmf.dirty .cmi{border-color:var(--accent)}
 textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
@@ -196,7 +202,8 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
         <select id="fReg" aria-label="Регион"></select>
         <select id="fChan" aria-label="Канал продаж"></select>
         <button id="btnFull" title="На весь экран">⛶ Экран</button>
-        <button class="primary" id="btnUpload">Загрузить выгрузку</button>
+        <span id="nameBox" style="display:none;font-size:13px;color:var(--ink2)">Вы: <input type="text" id="myName" placeholder="ваше имя для комментариев" aria-label="Ваше имя для комментариев" style="width:210px"></span>
+        <button class="primary" id="btnUpload">Обновить данные</button>
       </div>
     </div>
     <nav class="nav" id="nav">
@@ -253,7 +260,7 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
             <option value="low3">Ниже 80% в среднем за 3 мес.</option>
             <option value="cm">С комментарием</option>
             <option value="nocm">Без комментария</option>
-            <option value="nodyn">Нет динамики (факт не вырос за показанные даты)</option>
+            <option value="nodyn">Нет динамики (факт не вырос за последние 3 дня)</option>
           </select>
           <select id="fInd" aria-label="Показатель"></select>
           <div class="seg" id="focusSeg" title="Какие показатели показать в таблице"></div>
@@ -302,11 +309,11 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
 
 <div class="overlay" id="ov" role="dialog" aria-modal="true" aria-labelledby="ovTitle">
   <div class="dialog">
-    <h2 id="ovTitle">Новая выгрузка</h2>
+    <h2 id="ovTitle">Данные за новый день</h2>
     <p class="note">Добавьте две выгрузки в том же формате: файл продаж в тенге (столбцы «План Продаж», «Факт Продаж») и файл объёмов («ШПД План», «ФМС План», «ТВ План»). Тип файла определяется по заголовкам. Можно загрузить один файл — остальные показатели возьмутся из текущих данных.</p>
     <div class="drop" id="drop">Перетащите файлы .xlsx сюда или нажмите, чтобы выбрать<input type="file" id="fileIn" accept=".xlsx,.xls,.csv" multiple class="sr"></div>
     <div class="file-list" id="fileList"></div>
-    <label class="field">Дата выгрузки<input type="date" id="upDate"></label>
+    <label class="field">За какую дату данные<input type="date" id="upDate"></label>
     <div class="status" id="upStatus"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
       <button id="btnCancel">Закрыть</button>
@@ -449,7 +456,10 @@ const isLag=x=>x.fc3!=null&&x.fc3<0.8, isLow3=x=>x.avg!=null&&x.avg<0.8;
    Каждый комментарий — отдельная запись {L, period, text, at, by}. Ничего не перезаписывается:
    новая запись добавляется сверху, старые остаются в истории.
    claude.ai: записи в общей базе (коллекция cmlog), видны всем сразу. Иначе — в этом браузере. */
-const CMLOG_LS='salesPlanDaily.cmlog.v1', CM_LEGACY_LS='salesPlanDaily.comments.v1';
+const CMLOG_LS='salesPlanDaily.cmlog.v1', CM_LEGACY_LS='salesPlanDaily.comments.v1', NAME_LS='salesPlanDaily.myName';
+/* Общие комментарии для версии на GitHub: адрес веб-приложения Google Apps Script (Google-таблица).
+   Пусто — комментарии хранятся только в браузере. На claude.ai используется своя общая база. */
+const SHARED_CM_URL='';
 S.cm=new Map(); S.names=new Map(); S.uid=null; S.user=null;
 function cmIndex(){ const by=new Map(); const cur=S.model.cur;
   S.cm.forEach(e=>{ if(e.period!==cur) return; (by.get(e.L)||by.set(e.L,[]).get(e.L)).push(e); });
@@ -459,11 +469,13 @@ const cmList=L=>(S.cmBy&&S.cmBy.get(L))||[];
 const getCm=L=>{ const a=cmList(L); return a.length?(a[0].text||''):''; };
 const hasCm=L=>!!getCm(L).trim();
 const cmWhen=e=>{ if(!e.at) return ''; const d=new Date(e.at); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
-const cmWho=e=>e.by?(S.names.get(e.by)||''):'';
+const cmWho=e=>e.who||(e.by?(S.names.get(e.by)||''):'');
+const myName=()=>{ try{ return (localStorage.getItem(NAME_LS)||'').trim(); }catch(e){ return (S._name||'').trim(); } };
+function setMyName(v){ S._name=v; try{ localStorage.setItem(NAME_LS,v); }catch(e){} }
 function cmMeta(e){ const w=cmWho(e); return [cmWhen(e),w].filter(Boolean).map(esc).join(' · ')+(e.failed?' · <span class="nodyn">не сохранено</span>':''); }
 // поле сразу заполнено текущим комментарием; правка + OK = новая версия, прежняя уходит в историю
-function cmForm(L,big){ const v=getCm(L);
-  return `<div class="cmf${big?' big':''}" data-l="${esc(L)}"><textarea rows="${big?3:1}" class="cmi" placeholder="Комментарий…" aria-label="Комментарий">${esc(v)}</textarea><button type="button" class="cmok">${big?'Сохранить':'OK'}</button><span class="cmsaved" aria-live="polite"></span></div>`; }
+function cmForm(L,big){ const v=getCm(L); const ro=S.canWrite===false;
+  return `<div class="cmf${big?' big':''}${ro?' ro':''}" data-l="${esc(L)}"><textarea rows="${big?3:1}" class="cmi" placeholder="${ro?'только просмотр':'Комментарий…'}" aria-label="Комментарий"${ro?' readonly':''}>${esc(v)}</textarea>${ro?'':`<button type="button" class="cmok">${big?'Сохранить':'OK'}</button>`}<span class="cmsaved" aria-live="polite"></span></div>`; }
 function fitCm(t){ if(t.closest('.big')) return; t.style.height='auto'; t.style.height=Math.min(t.scrollHeight+2,140)+'px'; }
 function markDirty(t){ const f=t.closest('.cmf'); f.classList.toggle('dirty',t.value.trim()!==getCm(f.dataset.l).trim()); }
 function refreshCm(L){ document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"]`).forEach(f=>{ const t=f.querySelector('.cmi');
@@ -472,7 +484,7 @@ function refreshCm(L){ document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"
 function cmHistory(L){ const a=cmList(L); if(a.length<2&&!(a[0]&&a[0].at)) return '<p class="muted" style="margin:6px 0">Изменений пока не было.</p>';
   return '<h3 style="margin-top:12px">История изменений</h3><ol class="cm-hist">'+a.map((e,k)=>`<li class="${k===0?'now':''}"><div class="cm-meta">${k===0?'<b>сейчас</b>':''}${k===0&&cmMeta(e)?' · ':''}${cmMeta(e)||(k?'исходный комментарий':'')}</div><div>${e.text?esc(e.text):'<span class="muted">комментарий очищен</span>'}</div></li>`).join('')+'</ol>'; }
 function cmStatus(){ const n=filtered().filter(e=>hasCm(e.L)).length; const el=$('cmState'); if(!el) return;
-  el.textContent=(S.cmPending?'Сохраняю… · ':'')+`с комментариями: ${n}`+(S.db?'':' (новые записи хранятся в этом браузере)'); }
+  el.textContent=(S.cmPending?'Сохраняю… · ':'')+(S.canWrite===false?'только просмотр, писать комментарии нельзя · ':'')+`с комментариями: ${n}`+(S.db||S.remoteOk?' · видны всем':' (новые записи хранятся в этом браузере)'); }
 function loadLocalCm(){
   try{ const a=JSON.parse(localStorage.getItem(CMLOG_LS)||'[]'); a.forEach(e=>S.cm.set(e.id,e)); }catch(e){}
   try{ const o=JSON.parse(localStorage.getItem(CM_LEGACY_LS)||'{}');      // комментарии из прошлой версии страницы
@@ -483,17 +495,55 @@ function flashSaved(L,txt,bad){ document.querySelectorAll(`.cmf[data-l="${CSS.es
 async function addComment(L,text){
   text=String(text||'').trim(); if(text===getCm(L).trim()) return false;
   const id=`${S.model.cur}_${L}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+  if(S.remote&&!myName()){ flashSaved(L,'Укажите ваше имя в поле «Ваше имя» вверху страницы',true); const n=$('myName'); if(n){ n.focus(); n.classList.add('need'); } return false; }
   const e={id,L,period:S.model.cur,text,at:new Date().toISOString(),by:S.uid||null};
+  if(S.remote) e.who=myName();
   S.cm.set(id,e); cmIndex();
   document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"]`).forEach(f=>{ f.classList.remove('dirty'); const t=f.querySelector('.cmi'); t.value=text; fitCm(t); });
   refreshCm(L);
+  if(S.remote){ saveLocalCm(); S.cmPending++; cmStatus();
+    try{ await remotePush([e]); S.remoteOk=true; flashSaved(L,'✓ Сохранено — видно всем'); toast('Комментарий сохранён и виден всем'); }
+    catch(err){ e.failed=true; refreshCm(L); flashSaved(L,'Не удалось отправить — сохранено в этом браузере, отправится при следующем открытии',true); toast('Нет связи с общей таблицей комментариев'); }
+    finally{ S.cmPending--; cmStatus(); }
+    return true; }
   if(!S.db){ if(saveLocalCm()){ flashSaved(L,'✓ Сохранено'); toast('Комментарий сохранён'); } else { flashSaved(L,'✓ Сохранено в этом окне'); toast('Комментарий сохранён в этом окне — браузер не даёт хранить его после закрытия'); } return true; }
   S.cmPending++; cmStatus();
   try{ await S.db.collection('cmlog').doc(id).set({L:e.L,period:e.period,text:e.text,at:e.at,by:e.by}); flashSaved(L,'✓ Сохранено'); toast('Комментарий сохранён'); }
-  catch(err){ e.failed=true; refreshCm(L); flashSaved(L,'Не сохранено',true); toast('Комментарий не сохранён: '+(err&&err.code||err)); }
+  catch(err){ S.cm.delete(id); cmIndex();
+    const noPerm=err&&(err.code==='invalid_argument'||err.code==='not_granted'||err.code==='revoked');
+    document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"]`).forEach(f=>{ const t=f.querySelector('.cmi'); t.value=text; markDirty(t); });
+    if(S.card===L){ const h=$('cmHist'); if(h) h.innerHTML=cmHistory(L); }
+    if(noPerm){ S.canWrite=false; flashSaved(L,'У вас доступ только на просмотр — комментарий не сохранён. Попросите владельца страницы дать доступ «Редактор» (не по публичной ссылке).',true); toast('Нет прав на запись комментариев'); cmStatus(); }
+    else { flashSaved(L,'Не сохранено — нет связи, нажмите OK ещё раз',true); toast('Комментарий не сохранён: '+(err&&err.code||err)); } }
   finally{ S.cmPending--; cmStatus(); }
   return true;
 }
+/* ----- общая Google-таблица (версия на GitHub) ----- */
+async function remoteLoad(){
+  const r=await fetch(SHARED_CM_URL+'?period='+S.model.cur+'&t='+Date.now(),{cache:'no-store'}); const j=await r.json(); if(!j||!j.ok) throw new Error(j&&j.error||'ошибка');
+  const touched=new Set(), seen=new Set();
+  for(const x of j.rows||[]){ if(!x||!x.id||!x.L) continue; seen.add(x.id); const o=S.cm.get(x.id);
+    if(!o||o.text!==x.text||o.failed){ S.cm.set(x.id,{id:x.id,L:String(x.L).toUpperCase(),period:Number(x.period),text:String(x.text||''),at:x.at||null,who:x.by||''}); touched.add(String(x.L).toUpperCase()); } }
+  return {touched,seen};
+}
+async function remotePush(list){
+  const r=await fetch(SHARED_CM_URL,{method:'POST',body:JSON.stringify({rows:list.map(e=>({id:e.id,L:e.L,period:e.period,text:e.text,at:e.at,by:e.who||''}))})});
+  const j=await r.json(); if(!j||!j.ok) throw new Error(j&&j.error||'ошибка'); list.forEach(e=>{ delete e.failed; }); return j;
+}
+async function pollRemote(){ if(S.cmPending) return; try{ const {touched}=await remoteLoad(); S.remoteOk=true; if(touched.size){ cmIndex(); touched.forEach(refreshCm);
+    if(S.view==='sotrudniki'&&(S.show==='cm'||S.show==='nocm'||S.sort.k==='cm')&&!document.activeElement?.matches?.('.cmi')) renderEmps(); } }catch(e){} }
+async function remoteInit(){
+  S.remote=true; loadLocalCm(); renderNameField();
+  const local=[...S.cm.values()].filter(e=>e.at&&e.period===S.model.cur);
+  try{ const {seen}=await remoteLoad(); S.remoteOk=true;
+    const missing=local.filter(e=>!seen.has(e.id));            // записанное раньше в этом браузере — отправить всем
+    if(missing.length){ missing.forEach(e=>{ if(!e.who&&myName()) e.who=myName(); }); await remotePush(missing); saveLocalCm(); toast(`Отправлено в общую таблицу: ${missing.length} ранее внесённых комментариев`); }
+  }catch(err){ S.remoteOk=false; $('banner').textContent='Общая таблица комментариев сейчас недоступна — новые записи сохраняются в этом браузере и отправятся позже.'; $('banner').classList.add('on'); }
+  cmIndex(); renderAll();
+  setInterval(()=>{ if(document.visibilityState==='visible') pollRemote(); },60000);
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') pollRemote(); });
+}
+function renderNameField(){ const box=$('nameBox'); if(!box) return; box.style.display=S.remote?'':'none'; const n=$('myName'); if(n&&!n.value) n.value=myName(); }
 async function resolveNames(){
   if(!S.user) return; const ids=[...new Set([...S.cm.values()].map(e=>e.by).filter(Boolean))].filter(id=>!S.names.has(id)); if(!ids.length) return;
   try{ const ps=await S.user.profiles(ids); let ch=false; for(const id of ids){ const n=(ps[id]&&ps[id].name)||''; S.names.set(id,n); if(n) ch=true; }
@@ -585,14 +635,18 @@ function renderNotes(){
     `«По текущему темпу» = % выполнения / доля прошедших дней — для сравнения.`,
     `Среднее за 3 месяца — среднее арифметическое месячных процентов; месяц без плана в него не входит. Группы: ниже 80%, 80–100%, 100% и выше.`,
     `ДРБ (СОВО и Online Sales) не относится к регионам: показан отдельно, в «Итого по регионам» не входит. Канал Online churn не учитывается.`,
-    `Комментарии привязаны к сотруднику и месяцу. ${S.seed&&S.seed.period===m.cur?`Поле заполнено текущим комментарием (изначально — из файла анализа ШПД). Исправьте текст и нажмите «OK» (или Enter): новая версия сохранится с датой и временем, прежняя — в истории изменений в карточке сотрудника. `:''}${S.db?'Они сохраняются для всех, кто открывает эту страницу, и обновляются у всех сразу.':'В этой версии страницы они хранятся в браузере, на котором введены; чтобы передать их, скачайте Excel.'}`
+    `Комментарии привязаны к сотруднику и месяцу. ${S.seed&&S.seed.period===m.cur?`Поле заполнено текущим комментарием (изначально — из файла анализа ШПД). Исправьте текст и нажмите «OK» (или Enter): новая версия сохранится с датой и временем, прежняя — в истории изменений в карточке сотрудника. `:''}${S.db?'Они сохраняются для всех, кто открывает эту страницу, и обновляются у всех сразу.':S.remote?'Они записываются в общую Google-таблицу: видны всем, кто открывает ссылку, обновляются раз в минуту; у каждой записи — имя автора и время.':'В этой версии страницы они хранятся в браузере, на котором введены; чтобы передать их, скачайте Excel.'}`
   ].map(x=>`<li>${x}</li>`).join('');
 }
 
 /* ----- employees ----- */
 function dynSnaps(i){ return curSnaps().filter(s=>inMonth(s)&&snapHas(s,i)); }
 function snapFact(s,L,i){ const a=s&&s.v[L]; return a&&a[2*i+1]!=null?a[2*i+1]:null; }
-function lastInc(e,i){ const all=dynSnaps(i).slice(-3); if(all.length<2) return null; const a=snapFact(all[all.length-1],e.L,i), b=snapFact(all[0],e.L,i); return a!=null&&b!=null?a-b:null; }
+// три последних календарных дня до даты текущей выгрузки; день без выгрузки остаётся пустым столбцом
+function addDays(iso,k){ const [y,m,d]=iso.split('-').map(Number); const t=new Date(Date.UTC(y,m-1,d+k)); return t.toISOString().slice(0,10); }
+function dayCols(i){ const all=dynSnaps(i); return [-2,-1,0].map(k=>{ const date=addDays(S.model.date,k);
+  const sn=all.find(s=>s.date===date)||null; let prev=null; for(const s of all) if(s.date<date) prev=s; return {date,sn,prev}; }); }
+function lastInc(e,i){ const w=dayCols(i).filter(d=>d.sn); if(w.length<2) return null; const a=snapFact(w[w.length-1].sn,e.L,i), b=snapFact(w[0].sn,e.L,i); return a!=null&&b!=null?a-b:null; }
 const noDyn=(e,i)=>e.ind[i].plan>0&&lastInc(e,i)===0;
 function empList(){
   const q=S.q.trim().toLowerCase(); const ii=S.ind===''?null:+S.ind;
@@ -620,13 +674,13 @@ function renderEmps(){
   $('empCount').textContent=`Показано ${L.length} из ${filtered().length}`;
   $('empNote').innerHTML=`По каждому показателю: план, факт по последним выгрузкам (под цифрой — прирост с предыдущей выгрузки, <span class="nodyn">+0</span> — динамики нет), % выполнения на сейчас и под ним прогноз (${bucketLegend()}). Нажмите на строку — карточка сотрудника.`;
   const IS=S.focus===''?[0,1,2,3]:[+S.focus];
-  const DS=IND.map((_,i)=>{ const all=dynSnaps(i); const last=all.slice(-3); return last.map(sn=>({sn,prev:all[all.indexOf(sn)-1]||null})); });
+  const DS=IND.map((_,i)=>dynSnaps(i).length?dayCols(i):[]);
   const hd=`<thead><tr><th class="sticky" rowspan="2">№</th>${sortHead('fio','Сотрудник','l sticky st1" rowspan="2')}${sortHead('reg','Регион','l" rowspan="2')}${sortHead('chan','Канал','l" rowspan="2')}`+
     IS.map(i=>`<th class="grp" colspan="${2+Math.max(1,DS[i].length)}"><span class="swatch" style="background:${IND[i].color};margin-right:6px"></span>${IND[i].name}</th>`).join('')+
     `${sortHead('cm','Комментарий','l sep" rowspan="2')}</tr><tr>`+IS.map(i=>sortHead('l'+i,'План','sep')+
-      (DS[i].length?DS[i].map((d,j)=>j===DS[i].length-1?sortHead('v'+i,`Факт<br>на ${dShort(d.sn.date)}`,'dyn'):`<th class="dyn">Факт<br>на ${dShort(d.sn.date)}</th>`).join(''):sortHead('v'+i,'Факт'))+
+      (DS[i].length?DS[i].map((d,j)=>{ const lbl=`Факт<br>на ${dShort(d.date)}${d.sn?'':'<br><span class="small nodyn">нет выгрузки</span>'}`; return j===DS[i].length-1&&d.sn?sortHead('v'+i,lbl,'dyn'):`<th class="dyn">${lbl}</th>`; }).join(''):sortHead('v'+i,'Факт'))+
       sortHead('p'+i,'% выполн.<br><span class="muted" style="font-weight:400">прогноз</span>')).join('')+`</tr></thead>`;
-  const dynCell=(e,i,d,last)=>{ const v=snapFact(d.sn,e.L,i); if(v==null) return `<td class="dyn muted">—</td>`;
+  const dynCell=(e,i,d,last)=>{ if(!d.sn) return `<td class="dyn muted" title="Нет выгрузки за ${dShort(d.date)}">—</td>`; const v=snapFact(d.sn,e.L,i); if(v==null) return `<td class="dyn muted">—</td>`;
     const pv=d.prev?snapFact(d.prev,e.L,i):null; const inc=pv!=null?v-pv:null;
     const incH=inc==null?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn" title="Нет прироста с ${dShort(d.prev.date)}">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
     return `<td class="dyn${last?' lastd':''}">${last?`<b>${fmt(v)}</b>`:fmt(v)}${incH}</td>`; };
@@ -636,7 +690,19 @@ function renderEmps(){
         return x.plan>0?`<td class="sep">${fmt(x.plan)}</td>${dyn}<td><span class="pcbig">${pct(x.pc)}</span>${fcChip(x.fc3)}<span class="small">3 мес ${pct(x.avg)}</span></td>`
         :`<td class="sep muted">нет плана</td>${dyn}<td class="muted">—</td>`; }).join('')+
       `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; }).join('');
-  $('empTable').innerHTML=hd+'<tbody>'+rows+'</tbody>';
+  // строка «Итого» по отобранным сотрудникам
+  const filt=[S.reg===ONLY_R?'регионы':S.reg?(S.reg===DRB?'ДРБ':S.reg):'регионы + ДРБ',S.chan||'все каналы'].concat(S.q?[`поиск «${S.q}»`]:[]).concat(S.show?[$('fShow').selectedOptions[0].text.toLowerCase()]:[]);
+  const totDyn=(i,d,last)=>{ if(!d.sn) return `<td class="dyn muted">—</td>`; let v=0,any=false,inc=0,anyInc=false;
+    for(const e of L){ const a=snapFact(d.sn,e.L,i); if(a==null) continue; v+=a; any=true; const pv=d.prev?snapFact(d.prev,e.L,i):null; if(pv!=null){ inc+=a-pv; anyInc=true; } }
+    if(!any) return `<td class="dyn muted">—</td>`;
+    const incH=!anyInc?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
+    return `<td class="dyn${last?' lastd':''}">${last?`<b>${fmt(v)}</b>`:fmt(v)}${incH}</td>`; };
+  const tot=L.length?`<tr class="tot"><td class="no sticky"></td><td class="l who sticky st1"><b>Итого: ${L.length} сотр.</b><span class="small">${esc(filt.join(' · '))}</span></td><td class="l"></td><td class="l"></td>`+
+    IS.map(i=>{ const a=agg(L,i); const dyn=DS[i].length?DS[i].map((d,j)=>totDyn(i,d,j===DS[i].length-1)).join(''):`<td><b>${fmt(a.fact)}</b></td>`;
+      return `<td class="sep"><b>${fmt(a.plan)}</b></td>${dyn}<td><span class="pcbig">${pct(a.pc)}</span>${fcChip(a.fc3)}<span class="small">3 мес ${pct(a.avg)}</span></td>`; }).join('')+
+    `<td class="cmc sep l"><span class="small">с комментариями: ${L.filter(e=>hasCm(e.L)).length}</span></td></tr>`:'';
+  $('empTable').innerHTML=hd+'<tbody>'+tot+rows+'</tbody>';
+  requestAnimationFrame(()=>{ const th=$('empTable').querySelector('thead'); const h=th?th.offsetHeight:0; $('empTable').querySelectorAll('tr.tot td').forEach(td=>{ td.style.top=h+'px'; }); });
   requestAnimationFrame(()=>document.querySelectorAll('#empTable textarea.cmi').forEach(t=>{ if(t.value) fitCm(t); }));
   cmStatus();
 }
@@ -754,6 +820,7 @@ $('fChan').addEventListener('change',e=>{S.chan=e.target.value; renderView();});
 $('fSearch').addEventListener('input',e=>{S.q=e.target.value; clearTimeout(S._qt); S._qt=setTimeout(renderEmps,150);});
 $('fShow').addEventListener('change',e=>{S.show=e.target.value; renderFilters(); renderEmps();});
 $('fInd').addEventListener('change',e=>{S.ind=e.target.value; renderEmps();});
+$('myName').addEventListener('input',e=>{ setMyName(e.target.value); e.target.classList.remove('need'); });
 $('focusSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-f]'); if(!b) return; S.focus=b.dataset.f; renderFilters(); renderEmps();});
 $('distBy').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; S.distBy=b.dataset.by; renderDist();});
 $('dist').addEventListener('click',e=>{const s=e.target.closest('.dseg'); if(!s) return;
@@ -788,7 +855,7 @@ $('btnExport').addEventListener('click',async()=>{
     const cols=[['№',(e,n)=>n+1],['ФИО',e=>e.fio],['Логин',e=>e.L],['Регион',e=>e.reg],['Канал',e=>e.chan],['Подразделение',e=>e.np||e.fil]];
     IND.forEach((ind,i)=>{ const x=e=>e.ind[i];
       cols.push([`${ind.name}: план`,e=>x(e).plan>0?x(e).plan:null,'#,##0']);
-      for(const sn of dynSnaps(i).slice(-3)) cols.push([`${ind.name}: факт на ${dShort(sn.date)}`,e=>snapFact(sn,e.L,i),'#,##0']);
+      for(const d of dayCols(i)) cols.push([`${ind.name}: факт на ${dShort(d.date)}${d.sn?'':' (нет выгрузки)'}`,e=>d.sn?snapFact(d.sn,e.L,i):null,'#,##0']);
       cols.push([`${ind.name}: % на ${dShort(m.date)}`,e=>x(e).pc,'0%'],[`${ind.name}: прогноз (3 мес.)`,e=>x(e).fc3,'0%'],[`${ind.name}: ср. 3 мес.`,e=>x(e).avg,'0%']); });
     cols.push(['Последний комментарий',e=>getCm(e.L)]);
     cols.push(['История комментариев',e=>{ const a=cmList(e.L); return a.length>1||(a[0]&&a[0].at)?a.map(x=>`${[cmWhen(x),cmWho(x)].filter(Boolean).join(' ')||'исходный'}: ${x.text||'(очищен)'}`).join('\n'):''; }]);
@@ -870,9 +937,9 @@ function loadLocal(){
 }
 async function loadFromDb(){
   let db=null; try{ db=await (window.claude&&window.claude.use?window.claude.use('db'):null); }catch(e){ db=null; }
-  if(!db){ loadLocalCm(); loadLocal(); cmIndex(); renderAll(); return; }
+  if(!db){ loadLocal(); if(SHARED_CM_URL){ cmIndex(); renderAll(); await remoteInit(); return; } loadLocalCm(); cmIndex(); renderAll(); return; }
   S.db=db; renderNotes();
-  try{ S.user=await window.claude.use('user'); if(S.user) S.uid=await S.user.id(); }catch(e){ S.user=null; }
+  try{ S.user=await window.claude.use('user'); if(S.user){ S.uid=await S.user.id(); S.canWrite=await S.user.can('data.write'); } }catch(e){ S.user=null; }
   const timer=setTimeout(()=>{ $('banner').textContent='Сохранённые выгрузки и комментарии пока не загрузились — показаны данные из исходных файлов.'; $('banner').classList.add('on'); },10000);
   try{
     const ss=await db.collection('snaps').get();
