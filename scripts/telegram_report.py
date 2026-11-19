@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Отчёт «Отстающие по темпу» для Telegram-бота.
+"""Отчёт «Отстающие» (прогноз с учётом 3 мес.) для Telegram-бота.
 
 Берёт тот же daily/data.json, что и сайт, считает по тем же правилам и
 отправляет в Telegram сводку по регионам и каналам + Excel-файл со списком.
 
-Отстающий по темпу — сотрудник, у которого прогноз на месяц ниже 80%:
-    прогноз = (факт / план) / доля прошедших дней месяца.
-Для каждого отстающего указано, был ли он ниже 80% и в среднем за 3 прошлых
-полных месяца (тогда это «хронически отстающий»).
+Отстающий — сотрудник, у которого прогноз на конец месяца ниже 80%.
+Прогноз учитывает выполнение за 3 прошлых полных месяца (как на сайте):
+    прогноз = (факт + план × доля оставшихся дней × среднее выполнение за 3 мес.) / план;
+    если истории нет — вместо среднего берётся текущий темп.
+Для каждого отстающего указано, был ли он ниже 80% и в среднем за 3 месяца
+(тогда это «хронически отстающий»).
 
 Запуск:
     python scripts/telegram_report.py                       # только собрать файлы (out/)
@@ -86,7 +88,8 @@ def build(data):
             if np_: e["np"] = str(np_).strip()
 
     share = elapsed_share(date, cur)
-    emps = [e for e in E.values() if e["reg"] and cur in e["m"]]
+    emps = [e for e in E.values() if e["reg"] and cur in e["m"]
+            and any((e["m"][cur][k] or 0) > 0 for k in (0, 2, 4, 6))]   # только с планом в текущем месяце
     for e in emps:
         e["ind"] = []
         for i in range(4):
@@ -98,9 +101,11 @@ def build(data):
             avg = sum(pcs) / len(pcs) if pcs else None
             c = e["m"][cur]
             plan, fact = c[2 * i], c[2 * i + 1]
-            pc = fact / plan if plan and plan > 0 else None
-            fc = pc / share if pc is not None and share > 0 else None
-            e["ind"].append({"avg": avg, "plan": plan, "fact": fact, "pc": pc, "fc": fc,
+            pc = (fact or 0) / plan if plan and plan > 0 else None
+            pace = pc / share if pc is not None and share > 0 else None
+            r = avg if avg is not None else pace
+            fc = None if pc is None else pc if share >= 1 else (pc + (1 - share) * r if r is not None else None)
+            e["ind"].append({"avg": avg, "plan": plan, "fact": fact, "pc": pc, "fc": fc, "pace": pace,
                              "lag": fc is not None and fc < PACE_LIMIT,
                              "chronic": fc is not None and fc < PACE_LIMIT and avg is not None and avg < 0.8})
     return {"date": date, "cur": cur, "m3": m3, "share": share, "emps": emps}
@@ -130,9 +135,9 @@ def ddmm(date):
 
 def message(M):
     emps = M["emps"]
-    head = (f"<b>Отстающие по темпу на {ddmm(M['date'])}</b>\n"
+    head = (f"<b>Отстающие на {ddmm(M['date'])}</b>\n"
             f"{MONTHS[M['cur'] % 100 - 1]} {M['cur'] // 100}: прошло {round(M['share'] * 100)}% дней месяца.\n"
-            f"Отстающий — прогноз на месяц ниже 80%.\n")
+            f"Отстающий — прогноз на конец месяца ниже 80% (с учётом выполнения за 3 прошлых месяца).\n")
     m3 = ", ".join(MONTHS[p % 100 - 1][:3] for p in M["m3"])
     W = 12
 
@@ -153,7 +158,7 @@ def message(M):
             rows.append(line("Итого рег.", reg_list))
         rows.append(line("Всего", emps))
         return "<pre>" + html.escape("\n".join(rows)) + "</pre>"
-    return (head + "\n<b>1. Отстают по темпу, чел.</b>\n" + block(1) +
+    return (head + "\n<b>1. Прогноз ниже 80%, чел.</b>\n" + block(1) +
             f"\n<b>2. Из них хронически</b> (ниже 80% и в среднем за {m3}), чел.\n" + block(2))
 
 
@@ -167,8 +172,8 @@ def build_xlsx(M, path):
     emps = M["emps"]; wb = Workbook()
 
     ws = wb.active; ws.title = "Сводка"
-    ws.append([f"Отстающие по темпу на {ddmm(M['date'])} (прогноз на месяц ниже 80%)"]); ws["A1"].font = Font(bold=True, size=13)
-    ws.append([f"Прошло {round(M['share'] * 100)}% дней месяца. «Хронически» — отстают по темпу и ниже 80% в среднем за 3 прошлых месяца."])
+    ws.append([f"Отстающие на {ddmm(M['date'])}: прогноз на конец месяца ниже 80% (с учётом 3 прошлых месяцев)"]); ws["A1"].font = Font(bold=True, size=13)
+    ws.append([f"Прошло {round(M['share'] * 100)}% дней месяца. «Хронически» — прогноз ниже 80% и ниже 80% в среднем за 3 прошлых месяца."])
     ws.append([])
     ws.append(["Регион", "Канал", "Сотрудников"] + sum([[f"{n}: с планом", f"{n}: отстают", f"{n}: % отстающих", f"{n}: из них хронически"] for _, n, _ in IND], []))
     for c in ws[4]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
@@ -196,7 +201,7 @@ def build_xlsx(M, path):
 
     ws2 = wb.create_sheet("Сотрудники")
     ws2.append(["Регион", "Канал", "Подразделение", "ФИО", "Логин", "Отстаёт по показателям"] +
-               sum([[f"{n}: план", f"{n}: факт", f"{n}: % на дату", f"{n}: прогноз", f"{n}: ср. 3 мес."] for _, n, _ in IND], []))
+               sum([[f"{n}: план", f"{n}: факт", f"{n}: % на дату", f"{n}: прогноз (3 мес.)", f"{n}: ср. 3 мес."] for _, n, _ in IND], []))
     for c in ws2[1]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
     lag_emps = [e for e in emps if any(x["lag"] for x in e["ind"])]
     lag_emps.sort(key=lambda e: ((e["reg"] == DRB), e["reg"], CH_ORDER.index(e["chan"]) if e["chan"] in CH_ORDER else 99, -sum(x["lag"] for x in e["ind"]), e["fio"]))
@@ -257,7 +262,7 @@ def main():
     M = build(json.loads(Path(a.data).read_text(encoding="utf-8")))
     out = Path(a.out); out.mkdir(exist_ok=True)
     msg = message(M); (out / "message.html").write_text(msg, encoding="utf-8")
-    xlsx = out / f"otstayushchie_po_tempu_{M['date']}.xlsx"; build_xlsx(M, xlsx)
+    xlsx = out / f"otstayushchie_{M['date']}.xlsx"; build_xlsx(M, xlsx)
     print(msg); print(f"\nФайл: {xlsx}")
     if a.send:
         chat_ids = [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
