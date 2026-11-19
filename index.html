@@ -132,6 +132,25 @@ td.fc{font-weight:700}
 .cmsaved{flex-basis:100%;font-size:12px;font-weight:650;color:var(--high-ink);height:0;overflow:hidden;opacity:0;transition:opacity .2s}
 .cmsaved.on{height:auto;opacity:1;margin-top:2px}
 .cmsaved.bad{color:var(--low-ink)}
+.pctbox{display:inline-flex;gap:0}
+.pctbox select:first-child{border-radius:8px 0 0 8px}
+.pctbox select:last-child{border-radius:0 8px 8px 0;border-left:0;color:var(--ink2)}
+.ms{position:relative;display:inline-block}
+.ms-btn{display:inline-flex;align-items:center;gap:8px;min-width:170px;max-width:300px;justify-content:space-between;text-align:left;padding:7px 10px;background:var(--card)}
+.ms-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-car{color:var(--muted);font-size:11px}
+.ms.on .ms-btn{border-color:var(--accent);font-weight:600;box-shadow:0 0 0 2px var(--row-hover)}
+.ms-pop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:30;min-width:260px;max-width:380px;max-height:60vh;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.16);padding:8px}
+.ms.open .ms-pop{display:block}
+.ms-opt{display:flex;align-items:flex-start;gap:8px;padding:6px 6px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1.3}
+.ms-opt:hover{background:var(--row-hover)}
+.ms-opt input{margin-top:2px;width:16px;height:16px;accent-color:var(--accent);flex:none}
+.ms-quick{display:flex;gap:6px;flex-wrap:wrap;padding:2px 2px 8px;border-bottom:1px solid var(--grid);margin-bottom:4px}
+.ms-quick button{padding:3px 10px;font-size:12.5px}
+.ms-note{font-size:12px;color:var(--muted);padding:2px 6px 6px}
+.ms-foot{display:flex;justify-content:flex-end;padding-top:6px;border-top:1px solid var(--grid);margin-top:4px}
+.ms-foot button{padding:5px 14px;font-size:13px}
+.pctbox .ms-btn{border-radius:8px 0 0 8px}
 .cmf.ro .cmi{background:transparent;border-color:transparent;cursor:default}
 #myName{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--ink)}
 #myName.need{border-color:var(--low);outline:2px solid var(--low-bg)}
@@ -199,10 +218,11 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
         <p class="sub" id="subtitle">Загрузка данных…</p>
       </div>
       <div class="controls">
-        <select id="fReg" aria-label="Регион"></select>
-        <select id="fChan" aria-label="Канал продаж"></select>
+        <div class="ms" id="msReg"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+        <div class="ms" id="msChan"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
         <button id="btnFull" title="На весь экран">⛶ Экран</button>
         <span id="nameBox" style="display:none;font-size:13px;color:var(--ink2)">Вы: <input type="text" id="myName" placeholder="ваше имя для комментариев" aria-label="Ваше имя для комментариев" style="width:210px"></span>
+        <button id="btnGh" style="display:none" title="Скачать файл data.json со всеми выгрузками и комментариями — для сайта на GitHub">Скачать для GitHub</button>
         <button class="primary" id="btnUpload">Обновить данные</button>
       </div>
     </div>
@@ -254,15 +274,9 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
       <div class="etools">
         <div class="controls">
           <input type="search" id="fSearch" placeholder="ФИО, логин, подразделение" style="min-width:260px">
-          <select id="fShow" aria-label="Показать">
-            <option value="">Все сотрудники</option>
-            <option value="lag">Прогноз ниже 80%</option>
-            <option value="low3">Ниже 80% в среднем за 3 мес.</option>
-            <option value="cm">С комментарием</option>
-            <option value="nocm">Без комментария</option>
-            <option value="nodyn">Нет динамики (факт не вырос за последние 3 дня)</option>
-          </select>
-          <select id="fInd" aria-label="Показатель"></select>
+          <div class="ms" id="msShow"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+          <div class="ms" id="msInd"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+          <span class="pctbox"><div class="ms" id="msPct"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div><select id="fPctInd" aria-label="По какому показателю"></select></span>
           <div class="seg" id="focusSeg" title="Какие показатели показать в таблице"></div>
         </div>
         <div class="controls">
@@ -428,13 +442,14 @@ function enrich(model){
 }
 
 /* ---------------- state ---------------- */
-const S={focus:'',model:null,snaps:new Map(),reg:'',chan:'',q:'',show:'',ind:'',sort:{k:'reg',dir:1},distBy:'avg',
+const S={regs:new Set(),chans:new Set(),shows:new Set(),inds:new Set(),pcts:new Set(),focus:new Set(),pctInd:1,model:null,snaps:new Map(),reg:'',chan:'',q:'',show:'',ind:'',sort:{k:'reg',dir:1},distBy:'avg',
   db:null,base:null,source:'файлы',view:'svodka',comments:new Map(),cmPending:0,empOrder:[],card:null};
 function snapFromModel(model){ const v={}; for(const e of model.emps){ v[e.L]=e.m[model.cur].slice(); } return {date:model.date,period:model.cur,v}; }
 
 /* ---------------- filtering & aggregation ---------------- */
-function regOk(e){ return !S.reg||(S.reg===ONLY_R?e.reg!==DRB:e.reg===S.reg); }
-function filtered(){ return S.model.emps.filter(e=>regOk(e)&&(!S.chan||e.chan===S.chan)); }
+function regOk(e){ return !S.regs.size||S.regs.has(e.reg); }
+function filtered(){ return S.model.emps.filter(e=>regOk(e)&&(!S.chans.size||S.chans.has(e.chan))); }
+const oneReg=()=>S.regs.size===1?[...S.regs][0]:null;
 function agg(list,i){
   const m=S.model; let plan=0,fact=0,fcF=0,has=false;
   for(const e of list){ const x=e.ind[i]; if(x.plan!=null||x.fact!=null){ has=true; plan+=x.plan||0; fact+=x.fact||0; fcF+=x.plan>0&&x.fcFact!=null?x.fcFact:(x.fact||0); } }
@@ -531,7 +546,7 @@ async function remotePush(list){
   const j=await r.json(); if(!j||!j.ok) throw new Error(j&&j.error||'ошибка'); list.forEach(e=>{ delete e.failed; }); return j;
 }
 async function pollRemote(){ if(S.cmPending) return; try{ const {touched}=await remoteLoad(); S.remoteOk=true; if(touched.size){ cmIndex(); touched.forEach(refreshCm);
-    if(S.view==='sotrudniki'&&(S.show==='cm'||S.show==='nocm'||S.sort.k==='cm')&&!document.activeElement?.matches?.('.cmi')) renderEmps(); } }catch(e){} }
+    if(S.view==='sotrudniki'&&(S.shows.has('cm')||S.shows.has('nocm')||S.sort.k==='cm')&&!document.activeElement?.matches?.('.cmi')) renderEmps(); } }catch(e){} }
 async function remoteInit(){
   S.remote=true; loadLocalCm(); renderNameField();
   const local=[...S.cm.values()].filter(e=>e.at&&e.period===S.model.cur);
@@ -557,7 +572,7 @@ function subscribeComments(){
         if(ch.type==='removed'){ const o=S.cm.get(id); if(o) touched.add(o.L); S.cm.delete(id); continue; }
         if(d&&d.L){ S.cm.set(id,{id,...d}); touched.add(d.L); } }
       cmIndex(); touched.forEach(refreshCm); resolveNames();
-      if(S.view==='sotrudniki'&&(S.show==='cm'||S.show==='nocm'||S.sort.k==='cm')&&!document.activeElement?.matches?.('.cmi')) renderEmps();
+      if(S.view==='sotrudniki'&&(S.shows.has('cm')||S.shows.has('nocm')||S.sort.k==='cm')&&!document.activeElement?.matches?.('.cmi')) renderEmps();
     },err=>toast('Комментарии не обновляются: '+(err&&err.code||''))); }catch(e){}
 }
 
@@ -594,7 +609,7 @@ function renderTiles(){
 }
 
 function renderRC(){
-  const m=S.model; const list=filtered(); const regs=(S.reg&&S.reg!==ONLY_R)?[S.reg]:sortedRegions().filter(r=>r!==DRB);
+  const m=S.model; const list=filtered(); const regs=sortedRegions().filter(r=>r!==DRB&&regOk({reg:r}));
   $('rcNote').textContent=`Сверху — % выполнения на ${dFmt(m.date)}, под ним — прогноз на конец ${MONTHS_GEN[m.cur%100-1]} с учётом выполнения за ${m.m3.map(pShort).join(', ')} (цвет по прогнозу). Тенге — полные суммы.`;
   let h=`<thead><tr><th class="l sticky" rowspan="2">Регион / канал</th><th rowspan="2">Сотр.</th><th rowspan="2" title="Прогноз ниже 80% хотя бы по одному показателю">Прогноз<br>&lt;80%</th>`+
     IND.map(ind=>`<th class="grp" colspan="3"><span class="swatch" style="background:${ind.color};margin-right:6px"></span>${ind.name}</th>`).join('')+`</tr><tr>`+
@@ -607,15 +622,16 @@ function renderRC(){
     for(const c of sortedChans(LR)) h+=row('',`<span style="padding-left:16px">${esc(c)}</span>`,LR.filter(e=>e.chan===c)); };
   regs.forEach(block);
   if(regs.length>1){ const LRg=list.filter(e=>e.reg!==DRB); if(LRg.length) h+=row('total','Итого по регионам',LRg); }
-  if(!S.reg){ const LD=list.filter(e=>e.reg===DRB); if(LD.length){ h+=`<tr><td class="l sticky muted" colspan="${3+IND.length*3}" style="font-size:12.5px;padding-top:14px">ДРБ — отдельное подразделение, в итог по регионам не входит</td></tr>`; block(DRB); h+=row('total','Всего: регионы + ДРБ',list); } }
+  const LD=list.filter(e=>e.reg===DRB); const hasR=list.some(e=>e.reg!==DRB);
+  if(LD.length){ if(hasR) h+=`<tr><td class="l sticky muted" colspan="${3+IND.length*3}" style="font-size:12.5px;padding-top:14px">ДРБ — отдельное подразделение, в итог по регионам не входит</td></tr>`; block(DRB); if(hasR) h+=row('total','Всего: регионы + ДРБ',list); }
   $('rcTable').innerHTML=h+'</tbody>';
 }
 
 function renderDist(){
-  const list=filtered(); const byChan=!!S.reg&&S.reg!==ONLY_R; const keys=byChan?sortedChans(list):sortedRegions().filter(r=>list.some(e=>e.reg===r));
+  const list=filtered(); const byChan=!!oneReg(); const keys=byChan?sortedChans(list):sortedRegions().filter(r=>list.some(e=>e.reg===r));
   const by=S.distBy; const val=(e,i)=>by==='avg'?e.ind[i].avg:e.ind[i].fc3;
   document.querySelectorAll('#distBy button').forEach(b=>b.classList.toggle('on',b.dataset.by===by));
-  $('distTitle').textContent=(byChan?`Группы выполнения по каналам: ${regLabel(S.reg)}`:'Группы выполнения по регионам и ДРБ');
+  $('distTitle').textContent=(byChan?`Группы выполнения по каналам: ${regLabel(oneReg())}`:'Группы выполнения по регионам и ДРБ');
   $('distNote').textContent=(by==='avg'?`Сотрудники по среднему выполнению за ${S.model.m3.map(pShort).join(', ')}.`:`Сотрудники по прогнозу на конец ${MONTHS_GEN[S.model.cur%100-1]}.`)+' Нажмите на отрезок — откроется список этих сотрудников.';
   $('dist').innerHTML=IND.map((ind,i)=>{
     const rows=keys.map(k=>{ const L=list.filter(e=>(byChan?e.chan:e.reg)===k&&e.ind[i].plan>0); if(!L.length) return '';
@@ -648,16 +664,24 @@ function dayCols(i){ const all=dynSnaps(i); return [-2,-1,0].map(k=>{ const date
   const sn=all.find(s=>s.date===date)||null; let prev=null; for(const s of all) if(s.date<date) prev=s; return {date,sn,prev}; }); }
 function lastInc(e,i){ const w=dayCols(i).filter(d=>d.sn); if(w.length<2) return null; const a=snapFact(w[w.length-1].sn,e.L,i), b=snapFact(w[0].sn,e.L,i); return a!=null&&b!=null?a-b:null; }
 const noDyn=(e,i)=>e.ind[i].plan>0&&lastInc(e,i)===0;
+// выполнение на сейчас по одному показателю: 0% = ни одной продажи при плане
+const PCT_BUCKETS=[{k:'p0',t:'0% — нет факта'},{k:'p20',t:'1–20%'},{k:'p40',t:'21–40%'},{k:'p60',t:'41–60%'},{k:'p80',t:'61–80%'},{k:'p99',t:'81–99%'},{k:'p100',t:'100% и выше'}];
+function pctBucket(x){ if(!(x.plan>0)) return null; const f=x.fact||0; if(f<=0) return 'p0'; const r=Math.round(x.pc*100);
+  return r<=20?'p20':r<=40?'p40':r<=60?'p60':r<=80?'p80':x.pc<1?'p99':'p100'; }
+function pctCounts(){ const i=+S.pctInd; const cnt={}; filtered().forEach(e=>{ const b=pctBucket(e.ind[i]); if(b) cnt[b]=(cnt[b]||0)+1; }); return cnt; }
+function renderPctFilter(){ const i=+S.pctInd; $('fPctInd').innerHTML=IND.map((ind,k)=>`<option value="${k}" ${k===i?'selected':''}>по ${ind.name}</option>`).join(''); msRender('pct'); }
 function empList(){
-  const q=S.q.trim().toLowerCase(); const ii=S.ind===''?null:+S.ind;
-  const pick=(e,f)=>ii==null?e.ind.some(f):f(e.ind[ii]);
+  const q=S.q.trim().toLowerCase(); const II=S.inds.size?[...S.inds].map(Number):[0,1,2,3];
+  const pick=(e,f)=>II.some(i=>f(e.ind[i]));
   let L=filtered();
   if(q) L=L.filter(e=>(e.fio+' '+e.L+' '+e.np+' '+e.fil).toLowerCase().includes(q));
-  if(S.show==='lag') L=L.filter(e=>pick(e,isLag));
-  if(S.show==='low3') L=L.filter(e=>pick(e,isLow3));
-  if(S.show==='cm') L=L.filter(e=>hasCm(e.L));
-  if(S.show==='nocm') L=L.filter(e=>!hasCm(e.L));
-  if(S.show==='nodyn') L=L.filter(e=>ii==null?IND.some((_,i)=>noDyn(e,i)):noDyn(e,ii));
+  // условия «Показать» выполняются одновременно; внутри одного списка (регионы, диапазоны) — любое из отмеченного
+  if(S.shows.has('lag')) L=L.filter(e=>pick(e,isLag));
+  if(S.shows.has('low3')) L=L.filter(e=>pick(e,isLow3));
+  if(S.shows.has('cm')) L=L.filter(e=>hasCm(e.L));
+  if(S.shows.has('nocm')) L=L.filter(e=>!hasCm(e.L));
+  if(S.shows.has('nodyn')) L=L.filter(e=>II.some(i=>noDyn(e,i)));
+  if(S.pcts.size) L=L.filter(e=>S.pcts.has(pctBucket(e.ind[+S.pctInd])));
   const {k,dir}=S.sort; const base=(a,b)=>(a.reg===DRB)-(b.reg===DRB)||a.reg.localeCompare(b.reg,'ru')||chIdx(a.chan)-chIdx(b.chan)||a.fio.localeCompare(b.fio,'ru');
   let cmp;
   if(k==='reg') cmp=(a,b)=>dir*base(a,b);
@@ -670,10 +694,11 @@ function empList(){
 }
 function sortHead(k,label,cls=''){ const on=S.sort.k===k; return `<th class="${cls}" data-sort="${k}">${label}${on?`<span class="arr">${S.sort.dir>0?'▲':'▼'}</span>`:''}</th>`; }
 function renderEmps(){
+  renderPctFilter();
   const m=S.model; const L=empList(); S.empOrder=L.map(e=>e.L);
   $('empCount').textContent=`Показано ${L.length} из ${filtered().length}`;
   $('empNote').innerHTML=`По каждому показателю: план, факт по последним выгрузкам (под цифрой — прирост с предыдущей выгрузки, <span class="nodyn">+0</span> — динамики нет), % выполнения на сейчас и под ним прогноз (${bucketLegend()}). Нажмите на строку — карточка сотрудника.`;
-  const IS=S.focus===''?[0,1,2,3]:[+S.focus];
+  const IS=S.focus.size?[...S.focus].map(Number).sort():[0,1,2,3];
   const DS=IND.map((_,i)=>dynSnaps(i).length?dayCols(i):[]);
   const hd=`<thead><tr><th class="sticky" rowspan="2">№</th>${sortHead('fio','Сотрудник','l sticky st1" rowspan="2')}${sortHead('reg','Регион','l" rowspan="2')}${sortHead('chan','Канал','l" rowspan="2')}`+
     IS.map(i=>`<th class="grp" colspan="${2+Math.max(1,DS[i].length)}"><span class="swatch" style="background:${IND[i].color};margin-right:6px"></span>${IND[i].name}</th>`).join('')+
@@ -691,7 +716,9 @@ function renderEmps(){
         :`<td class="sep muted">нет плана</td>${dyn}<td class="muted">—</td>`; }).join('')+
       `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; }).join('');
   // строка «Итого» по отобранным сотрудникам
-  const filt=[S.reg===ONLY_R?'регионы':S.reg?(S.reg===DRB?'ДРБ':S.reg):'регионы + ДРБ',S.chan||'все каналы'].concat(S.q?[`поиск «${S.q}»`]:[]).concat(S.show?[$('fShow').selectedOptions[0].text.toLowerCase()]:[]);
+  const filt=[S.regs.size?[...S.regs].map(r=>r===DRB?'ДРБ':r).join(', '):'регионы + ДРБ',S.chans.size?[...S.chans].join(', '):'все каналы'].concat(S.q?[`поиск «${S.q}»`]:[])
+    .concat([...S.shows].map(k=>SHOW_OPTS.find(o=>o.v===k).t.toLowerCase()+(['lag','low3','nodyn'].includes(k)&&S.inds.size?` (${[...S.inds].map(i=>IND[i].short).join(', ')})`:'')))
+    .concat(S.pcts.size?[`${IND[+S.pctInd].short}: ${PCT_BUCKETS.filter(b=>S.pcts.has(b.k)).map(b=>b.t).join(', ')}`]:[]);
   const totDyn=(i,d,last)=>{ if(!d.sn) return `<td class="dyn muted">—</td>`; let v=0,any=false,inc=0,anyInc=false;
     for(const e of L){ const a=snapFact(d.sn,e.L,i); if(a==null) continue; v+=a; any=true; const pv=d.prev?snapFact(d.prev,e.L,i):null; if(pv!=null){ inc+=a-pv; anyInc=true; } }
     if(!any) return `<td class="dyn muted">—</td>`;
@@ -797,13 +824,47 @@ function renderCard(){
 }
 
 /* ----- filters, routing, render ----- */
+/* ----- список с галочками (несколько значений) ----- */
+const SHOW_OPTS=[{v:'lag',t:'Прогноз ниже 80%'},{v:'low3',t:'Ниже 80% в среднем за 3 мес.'},{v:'nodyn',t:'Нет динамики (факт не вырос за последние 3 дня)'},{v:'cm',t:'С комментарием'},{v:'nocm',t:'Без комментария'}];
+const MSDEF={
+  reg:{el:'msReg',all:'Регионы + ДРБ',label:'Регионы',opts:()=>sortedRegions().map(r=>({v:r,t:r===DRB?'ДРБ (СОВО, Online Sales)':r})),get:()=>S.regs,set:v=>{S.regs=v;},
+    quick:[{t:'Только регионы',f:()=>new Set(sortedRegions().filter(r=>r!==DRB))}],after:()=>{ renderView(); }},
+  chan:{el:'msChan',all:'Все каналы',label:'Каналы',opts:()=>sortedChans(S.model.emps.filter(regOk)).map(c=>({v:c,t:c})),get:()=>S.chans,set:v=>{S.chans=v;},after:()=>{ renderView(); }},
+  show:{el:'msShow',all:'Все сотрудники',label:'Условия',note:'Отмеченные условия выполняются одновременно',opts:()=>SHOW_OPTS,get:()=>S.shows,set:v=>{S.shows=v;},after:()=>{ renderFilters(); renderEmps(); }},
+  ind:{el:'msInd',all:'по любому показателю',label:'Показатели',note:'Для условий «прогноз», «ниже 80%», «нет динамики»: достаточно любого из отмеченных',opts:()=>IND.map((ind,i)=>({v:i,t:'по '+ind.name})),get:()=>S.inds,set:v=>{S.inds=v;},after:()=>{ renderEmps(); }},
+  pct:{el:'msPct',all:'Выполнение сейчас: все',label:'Выполнение',opts:()=>{ const c=pctCounts(); return PCT_BUCKETS.map(b=>({v:b.k,t:`${b.t} (${c[b.k]||0} чел.)`,s:b.t})); },get:()=>S.pcts,set:v=>{S.pcts=v;},
+    after:()=>{ if(S.pcts.size&&S.focus.size&&!S.focus.has(+S.pctInd)){ S.focus.add(+S.pctInd); renderFilters(); } renderEmps(); }}
+};
+function msRender(key){ const d=MSDEF[key], root=$(d.el); if(!root) return; const sel=d.get(); const opts=d.opts(); const ch=opts.filter(o=>sel.has(o.v));
+  const short=o=>o.s||o.t; const onlyR=key==='reg'&&ch.length&&!sel.has(DRB)&&ch.length===opts.filter(o=>o.v!==DRB).length;
+  const txt=onlyR?'Только регионы':!ch.length?d.all:ch.length===1?short(ch[0]):ch.length===2?ch.map(short).join(', '):`${d.label}: ${ch.length} выбрано`;
+  root.querySelector('.ms-btn').innerHTML=`<span class="ms-txt">${esc(txt)}</span><span class="ms-car">▾</span>`; root.classList.toggle('on',ch.length>0);
+  if(root.classList.contains('open')) msPanel(key); }
+function msPanel(key){ const d=MSDEF[key], root=$(d.el); const sel=d.get(); const opts=d.opts(); root._opts=opts;
+  root.querySelector('.ms-pop').innerHTML=(d.note?`<div class="ms-note">${esc(d.note)}</div>`:'')+
+    `<div class="ms-quick"><button type="button" data-q="all">Все</button>${(d.quick||[]).map((q,k)=>`<button type="button" data-q="${k}">${esc(q.t)}</button>`).join('')}</div>`+
+    opts.map((o,k)=>`<label class="ms-opt"><input type="checkbox" data-k="${k}" ${sel.has(o.v)?'checked':''}><span>${esc(o.t)}</span></label>`).join('')+
+    `<div class="ms-foot"><button type="button" class="primary" data-q="close">Готово</button></div>`; }
+function msCloseAll(except){ document.querySelectorAll('.ms.open').forEach(r=>{ if(r!==except) r.classList.remove('open'); }); }
+document.addEventListener('click',e=>{
+  const btn=e.target.closest&&e.target.closest('.ms-btn');
+  if(btn){ const root=btn.closest('.ms'); const key=Object.keys(MSDEF).find(k=>MSDEF[k].el===root.id); const open=!root.classList.contains('open'); msCloseAll(root); root.classList.toggle('open',open); if(open) msPanel(key); return; }
+  const q=e.target.closest&&e.target.closest('.ms-pop [data-q]');
+  if(q){ const root=q.closest('.ms'); const key=Object.keys(MSDEF).find(k=>MSDEF[k].el===root.id); const d=MSDEF[key];
+    if(q.dataset.q==='close'){ root.classList.remove('open'); return; }
+    d.set(q.dataset.q==='all'?new Set():d.quick[+q.dataset.q].f()); d.after(); msRender(key); msPanel(key); return; }
+  if(!(e.target.closest&&e.target.closest('.ms'))) msCloseAll(null);
+});
+document.addEventListener('change',e=>{ const cb=e.target.closest&&e.target.closest('.ms-opt input'); if(!cb) return;
+  const root=cb.closest('.ms'); const key=Object.keys(MSDEF).find(k=>MSDEF[k].el===root.id); const d=MSDEF[key]; const o=root._opts[+cb.dataset.k];
+  const next=new Set(d.get()); if(cb.checked) next.add(o.v); else next.delete(o.v);
+  if(key==='show'){ if(o.v==='cm'&&cb.checked) next.delete('nocm'); if(o.v==='nocm'&&cb.checked) next.delete('cm'); }
+  d.set(next); d.after(); msRender(key); msPanel(key); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') msCloseAll(null); });
 function renderFilters(){
-  const regs=sortedRegions();
-  $('fReg').innerHTML=`<option value="">Регионы + ДРБ</option><option value="${ONLY_R}" ${S.reg===ONLY_R?'selected':''}>Только регионы</option>`+regs.map(r=>`<option value="${esc(r)}" ${r===S.reg?'selected':''}>${esc(r===DRB?'ДРБ (СОВО, Online Sales)':r)}</option>`).join('');
-  const ch=sortedChans(); $('fChan').innerHTML=`<option value="">Все каналы</option>`+ch.map(c=>`<option ${c===S.chan?'selected':''}>${esc(c)}</option>`).join('');
-  $('fInd').innerHTML=`<option value="">по любому показателю</option>`+IND.map((ind,i)=>`<option value="${i}" ${String(i)===String(S.ind)?'selected':''}>по ${ind.name}</option>`).join('');
-  $('fInd').style.display=(S.show==='lag'||S.show==='low3'||S.show==='nodyn')?'':'none';
-  $('focusSeg').innerHTML=`<button data-f="" class="${S.focus===''?'on':''}">Все</button>`+IND.map((ind,i)=>`<button data-f="${i}" class="${String(S.focus)===String(i)?'on':''}">${ind.short}</button>`).join('');
+  for(const k of Object.keys(MSDEF)) msRender(k);
+  $('msInd').style.display=[...S.shows].some(k=>['lag','low3','nodyn'].includes(k))?'':'none';
+  $('focusSeg').innerHTML=`<button data-f="" class="${!S.focus.size?'on':''}">Все</button>`+IND.map((ind,i)=>`<button data-f="${i}" class="${S.focus.has(i)?'on':''}">${ind.short}</button>`).join('');
 }
 function setView(v){ if(!['svodka','sotrudniki','dinamika'].includes(v)) v='svodka'; S.view=v;
   document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
@@ -815,17 +876,16 @@ function renderView(){ if(!S.model) return; if(S.view==='svodka'){ renderTiles()
 function renderAll(){ cmIndex(); renderHeader(); renderFilters(); renderView(); }
 
 window.addEventListener('hashchange',()=>setView(location.hash.slice(1)));
-$('fReg').addEventListener('change',e=>{S.reg=e.target.value; renderView();});
-$('fChan').addEventListener('change',e=>{S.chan=e.target.value; renderView();});
 $('fSearch').addEventListener('input',e=>{S.q=e.target.value; clearTimeout(S._qt); S._qt=setTimeout(renderEmps,150);});
-$('fShow').addEventListener('change',e=>{S.show=e.target.value; renderFilters(); renderEmps();});
-$('fInd').addEventListener('change',e=>{S.ind=e.target.value; renderEmps();});
+$('fPctInd').addEventListener('change',e=>{S.pctInd=+e.target.value; if(S.focus.size&&!S.focus.has(S.pctInd)){ S.focus.add(S.pctInd); renderFilters(); } renderEmps();});
 $('myName').addEventListener('input',e=>{ setMyName(e.target.value); e.target.classList.remove('need'); });
-$('focusSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-f]'); if(!b) return; S.focus=b.dataset.f; renderFilters(); renderEmps();});
+$('focusSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-f]'); if(!b) return;
+  if(b.dataset.f==='') S.focus=new Set(); else { const i=+b.dataset.f; const n=new Set(S.focus); n.has(i)?n.delete(i):n.add(i); if(n.size===IND.length) n.clear(); S.focus=n; }
+  renderFilters(); renderEmps();});
 $('distBy').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; S.distBy=b.dataset.by; renderDist();});
 $('dist').addEventListener('click',e=>{const s=e.target.closest('.dseg'); if(!s) return;
-  if(!S.reg||S.reg===ONLY_R) S.reg=s.dataset.k; else S.chan=s.dataset.k;
-  S.ind=s.dataset.i; S.show=s.dataset.b==='low'?(S.distBy==='avg'?'low3':'lag'):''; $('fShow').value=S.show;
+  if(!oneReg()) S.regs=new Set([s.dataset.k]); else S.chans=new Set([s.dataset.k]);
+  S.inds=new Set([+s.dataset.i]); S.shows=s.dataset.b==='low'?new Set([S.distBy==='avg'?'low3':'lag']):new Set();
   S.sort={k:(S.distBy==='avg'?'a':'p')+s.dataset.i,dir:1}; renderFilters(); setView('sotrudniki'); });
 $('empTable').addEventListener('click',e=>{
   const th=e.target.closest('th[data-sort]'); if(th){ const k=th.dataset.sort; S.sort=S.sort.k===k?{k,dir:-S.sort.dir}:{k,dir:1}; renderEmps(); return; }
@@ -846,6 +906,26 @@ const tip=$('tip');
 document.addEventListener('mousemove',e=>{ const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){tip.style.display='none';return;}
   const parts=t.getAttribute('data-tip').split('|'); tip.innerHTML=`<b>${esc(parts[0])}</b>`+parts.slice(1).map(p=>`<div>${esc(p)}</div>`).join('');
   tip.style.display='block'; const w=tip.offsetWidth,h=tip.offsetHeight; let x=e.clientX+14,y=e.clientY+14; if(x+w>innerWidth-8) x=e.clientX-w-14; if(y+h>innerHeight-8) y=e.clientY-h-14; tip.style.left=x+'px'; tip.style.top=y+'px'; });
+
+/* ---------------- файл данных для сайта на GitHub ----------------
+   Собирает data.json в том же формате, что и исходный: строки продаж (tg) и объёмов (vol) по месяцам,
+   все выгрузки текущего месяца (snaps) и последний комментарий по каждому сотруднику. */
+function buildGithubData(){
+  const m=S.model; const tg=[],vol=[];
+  for(const e of m.emps){ for(const [p,a] of Object.entries(e.m)){ const P=Number(p); if(!a) continue;
+    if(a[0]!=null||a[1]!=null) tg.push([P,e.reg,e.fil||'',e.L,e.fio||'',e.chan,a[0]||0,a[1]||0]);
+    if([2,3,4,5,6,7].some(k=>a[k]!=null)) vol.push([P,e.reg,e.fil||'',e.fio||'',e.L,e.chan,e.np||'',a[2]||0,a[3]||0,a[4]||0,a[5]||0,a[6]||0,a[7]||0]); } }
+  const snaps={}; for(const sn of S.snaps.values()) if(sn.period===m.cur&&sn.date!==m.date) snaps[sn.date]=sn.v;
+  const items={}; for(const e of m.emps){ const t=getCm(e.L).trim(); if(t) items[e.L]=t; }
+  return {exportDate:m.date,tg,vol,shpdHist:{},snaps,comments:{period:m.cur,source:'claude.ai',items}};
+}
+$('btnGh').addEventListener('click',async()=>{
+  try{ const data=JSON.stringify(buildGithubData());
+    let dl=null; try{ dl=await (window.claude&&window.claude.use?window.claude.use('downloads'):null); }catch(e){ dl=null; }
+    if(dl){ await dl.save({filename:'data.json',data:new Blob([data],{type:'application/json'})}); toast('Файл data.json сохранён — загрузите его на GitHub'); }
+    else { const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:'application/json'})); a.download='data.json'; a.click(); }
+  }catch(err){ if(err&&err.code==='declined') return; toast('Не удалось скачать: '+(err&&(err.message||err.code)||err)); }
+});
 
 /* ---------------- Excel export ---------------- */
 function loadXLSX(){ return new Promise((res,rej)=>{ if(window.XLSX) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=()=>res(); s.onerror=()=>rej(new Error('Не удалось загрузить модуль Excel')); document.head.appendChild(s); }); }
@@ -938,7 +1018,7 @@ function loadLocal(){
 async function loadFromDb(){
   let db=null; try{ db=await (window.claude&&window.claude.use?window.claude.use('db'):null); }catch(e){ db=null; }
   if(!db){ loadLocal(); if(SHARED_CM_URL){ cmIndex(); renderAll(); await remoteInit(); return; } loadLocalCm(); cmIndex(); renderAll(); return; }
-  S.db=db; renderNotes();
+  S.db=db; renderNotes(); $('btnGh').style.display='';
   try{ S.user=await window.claude.use('user'); if(S.user){ S.uid=await S.user.id(); S.canWrite=await S.user.can('data.write'); } }catch(e){ S.user=null; }
   const timer=setTimeout(()=>{ $('banner').textContent='Сохранённые выгрузки и комментарии пока не загрузились — показаны данные из исходных файлов.'; $('banner').classList.add('on'); },10000);
   try{
