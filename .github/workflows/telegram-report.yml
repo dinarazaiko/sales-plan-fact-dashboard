@@ -19,4 +19,4 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SITE_URL: https://dinarazaiko.github.io/sales-plan-fact-dashboard/daily/
-        run: python scripts/telegram_report.py --data daily/data.json --send
+        run: python scripts/telegram_report.py --data data.json --send
