@@ -136,6 +136,10 @@ td.fc{font-weight:700}
 .pctbox select:first-child{border-radius:8px 0 0 8px}
 .pctbox select:last-child{border-radius:0 8px 8px 0;border-left:0;color:var(--ink2)}
 .ms{position:relative;display:inline-block}
+.ms-search{width:100%;margin:0 0 6px;font:inherit;font-size:13.5px;padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--ink)}
+.ms-opt[hidden]{display:none}
+#empTable td.wrapc{white-space:normal;min-width:110px;max-width:170px;font-size:13px}
+.topbar .ms-btn{min-width:150px}
 .ms-btn{display:inline-flex;align-items:center;gap:8px;min-width:170px;max-width:300px;justify-content:space-between;text-align:left;padding:7px 10px;background:var(--card)}
 .ms-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ms-car{color:var(--muted);font-size:11px}
@@ -219,6 +223,8 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
       </div>
       <div class="controls">
         <div class="ms" id="msReg"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+        <div class="ms" id="msFil"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+        <div class="ms" id="msNp"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
         <div class="ms" id="msChan"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
         <button id="btnFull" title="На весь экран">⛶ Экран</button>
         <span id="nameBox" style="display:none;font-size:13px;color:var(--ink2)">Вы: <input type="text" id="myName" placeholder="ваше имя для комментариев" aria-label="Ваше имя для комментариев" style="width:210px"></span>
@@ -426,6 +432,13 @@ function enrich(model){
   const share=elapsedShare(model.date,model.cur); model.share=share;
   // только сотрудники текущего месяца, у которых есть план хотя бы по одному показателю
   model.emps=model.emps.filter(e=>{const c=e.m[model.cur]; return c&&[0,2,4,6].some(k=>c[k]>0);});
+  // ОДТ (филиал) и город / населённый пункт: разные написания одного названия сводятся к одному
+  const canon=(vals)=>{ const by=new Map(); vals.forEach(v=>{ if(!v) return; const k=v.toLowerCase(); const m=by.get(k)||new Map(); m.set(v,(m.get(v)||0)+1); by.set(k,m); });
+    const out=new Map(); by.forEach((m,k)=>out.set(k,[...m.entries()].sort((a,b)=>b[1]-a[1])[0][0])); return out; };
+  const clean=v=>String(v||'').replace(/\s+/g,' ').trim();
+  const city=v=>clean(v).replace(/^г\.\s*/i,'');
+  const cf=canon(model.emps.map(e=>clean(e.fil))), cn=canon(model.emps.map(e=>city(e.np)));
+  for(const e of model.emps){ const f=clean(e.fil), n=city(e.np); e.filN=f?cf.get(f.toLowerCase()):''; e.npN=n?cn.get(n.toLowerCase()):''; }
   for(const e of model.emps){
     e.ind=IND.map((_,i)=>{
       const mon=model.m3.map(p=>{const a=e.m[p]; if(!a) return {p,plan:null,fact:null,pc:null}; const pl=a[2*i],fa=a[2*i+1]; return {p,plan:pl,fact:fa,pc:pl>0?(fa||0)/pl:null};});
@@ -442,13 +455,14 @@ function enrich(model){
 }
 
 /* ---------------- state ---------------- */
-const S={regs:new Set(),chans:new Set(),shows:new Set(),inds:new Set(),pcts:new Set(),focus:new Set(),pctInd:1,model:null,snaps:new Map(),reg:'',chan:'',q:'',show:'',ind:'',sort:{k:'reg',dir:1},distBy:'avg',
+const S={regs:new Set(),chans:new Set(),fils:new Set(),nps:new Set(),shows:new Set(),inds:new Set(),pcts:new Set(),focus:new Set(),pctInd:1,model:null,snaps:new Map(),reg:'',chan:'',q:'',show:'',ind:'',sort:{k:'reg',dir:1},distBy:'avg',
   db:null,base:null,source:'файлы',view:'svodka',comments:new Map(),cmPending:0,empOrder:[],card:null};
 function snapFromModel(model){ const v={}; for(const e of model.emps){ v[e.L]=e.m[model.cur].slice(); } return {date:model.date,period:model.cur,v}; }
 
 /* ---------------- filtering & aggregation ---------------- */
 function regOk(e){ return !S.regs.size||S.regs.has(e.reg); }
-function filtered(){ return S.model.emps.filter(e=>regOk(e)&&(!S.chans.size||S.chans.has(e.chan))); }
+const filOk=e=>!S.fils.size||S.fils.has(e.filN), npOk=e=>!S.nps.size||S.nps.has(e.npN);
+function filtered(){ return S.model.emps.filter(e=>regOk(e)&&(!S.chans.size||S.chans.has(e.chan))&&filOk(e)&&npOk(e)); }
 const oneReg=()=>S.regs.size===1?[...S.regs][0]:null;
 function agg(list,i){
   const m=S.model; let plan=0,fact=0,fcF=0,has=false;
@@ -474,7 +488,7 @@ const isLag=x=>x.fc3!=null&&x.fc3<0.8, isLow3=x=>x.avg!=null&&x.avg<0.8;
 const CMLOG_LS='salesPlanDaily.cmlog.v1', CM_LEGACY_LS='salesPlanDaily.comments.v1', NAME_LS='salesPlanDaily.myName';
 /* Общие комментарии для версии на GitHub: адрес веб-приложения Google Apps Script (Google-таблица).
    Пусто — комментарии хранятся только в браузере. На claude.ai используется своя общая база. */
-const SHARED_CM_URL='';
+const SHARED_CM_URL='https://script.google.com/macros/s/AKfycbwckMfrtmcpWEZLulqbxPVKR7cYuxBKHo9j8NK7oTi4VkKW3hIZo9fCHMsoMGdIfeA7/exec';
 S.cm=new Map(); S.names=new Map(); S.uid=null; S.user=null;
 function cmIndex(){ const by=new Map(); const cur=S.model.cur;
   S.cm.forEach(e=>{ if(e.period!==cur) return; (by.get(e.L)||by.set(e.L,[]).get(e.L)).push(e); });
@@ -510,7 +524,7 @@ function flashSaved(L,txt,bad){ document.querySelectorAll(`.cmf[data-l="${CSS.es
 async function addComment(L,text){
   text=String(text||'').trim(); if(text===getCm(L).trim()) return false;
   const id=`${S.model.cur}_${L}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-  if(S.remote&&!myName()){ flashSaved(L,'Укажите ваше имя в поле «Ваше имя» вверху страницы',true); const n=$('myName'); if(n){ n.focus(); n.classList.add('need'); } return false; }
+  if(S.remote&&!myName()){ flashSaved(L,'Сначала впишите своё имя в поле «Вы:» вверху страницы',true); const n=$('myName'); if(n){ n.focus(); n.classList.add('need'); } return false; }
   const e={id,L,period:S.model.cur,text,at:new Date().toISOString(),by:S.uid||null};
   if(S.remote) e.who=myName();
   S.cm.set(id,e); cmIndex();
@@ -687,6 +701,8 @@ function empList(){
   if(k==='reg') cmp=(a,b)=>dir*base(a,b);
   else if(k==='fio') cmp=(a,b)=>dir*a.fio.localeCompare(b.fio,'ru');
   else if(k==='chan') cmp=(a,b)=>dir*(chIdx(a.chan)-chIdx(b.chan))||base(a,b);
+  else if(k==='fil') cmp=(a,b)=>dir*(a.filN||'').localeCompare(b.filN||'','ru')||base(a,b);
+  else if(k==='np') cmp=(a,b)=>dir*(a.npN||'').localeCompare(b.npN||'','ru')||base(a,b);
   else if(k==='cm'){ const t=e=>{const x=cmList(e.L)[0]; return x?(x.at||'0'):'';}; cmp=(a,b)=>{const x=t(a),y=t(b); if(!x&&!y) return base(a,b); if(!x) return 1; if(!y) return -1; return dir*y.localeCompare(x)||base(a,b);}; }
   else { const t=k[0], i=+k.slice(1); const g=e=>t==='f'?e.ind[i].pc:t==='p'?e.ind[i].fc3:t==='l'?(e.ind[i].plan>0?e.ind[i].plan:null):t==='v'?(e.ind[i].plan>0?e.ind[i].fact:null):e.ind[i].avg;
     cmp=(a,b)=>{const x=g(a),y=g(b); if(x==null&&y==null) return base(a,b); if(x==null) return 1; if(y==null) return -1; return dir*(x-y)||base(a,b);}; }
@@ -700,7 +716,7 @@ function renderEmps(){
   $('empNote').innerHTML=`По каждому показателю: план, факт по последним выгрузкам (под цифрой — прирост с предыдущей выгрузки, <span class="nodyn">+0</span> — динамики нет), % выполнения на сейчас и под ним прогноз (${bucketLegend()}). Нажмите на строку — карточка сотрудника.`;
   const IS=S.focus.size?[...S.focus].map(Number).sort():[0,1,2,3];
   const DS=IND.map((_,i)=>dynSnaps(i).length?dayCols(i):[]);
-  const hd=`<thead><tr><th class="sticky" rowspan="2">№</th>${sortHead('fio','Сотрудник','l sticky st1" rowspan="2')}${sortHead('reg','Регион','l" rowspan="2')}${sortHead('chan','Канал','l" rowspan="2')}`+
+  const hd=`<thead><tr><th class="sticky" rowspan="2">№</th>${sortHead('fio','Сотрудник','l sticky st1" rowspan="2')}${sortHead('reg','Регион','l" rowspan="2')}${sortHead('chan','Канал','l" rowspan="2')}${sortHead('fil','ОДТ / филиал','l" rowspan="2')}${sortHead('np','Город / н.п.','l" rowspan="2')}`+
     IS.map(i=>`<th class="grp" colspan="${2+Math.max(1,DS[i].length)}"><span class="swatch" style="background:${IND[i].color};margin-right:6px"></span>${IND[i].name}</th>`).join('')+
     `${sortHead('cm','Комментарий','l sep" rowspan="2')}</tr><tr>`+IS.map(i=>sortHead('l'+i,'План','sep')+
       (DS[i].length?DS[i].map((d,j)=>{ const lbl=`Факт<br>на ${dShort(d.date)}${d.sn?'':'<br><span class="small nodyn">нет выгрузки</span>'}`; return j===DS[i].length-1&&d.sn?sortHead('v'+i,lbl,'dyn'):`<th class="dyn">${lbl}</th>`; }).join(''):sortHead('v'+i,'Факт'))+
@@ -710,13 +726,13 @@ function renderEmps(){
     const incH=inc==null?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn" title="Нет прироста с ${dShort(d.prev.date)}">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
     return `<td class="dyn${last?' lastd':''}">${last?`<b>${fmt(v)}</b>`:fmt(v)}${incH}</td>`; };
   const rows=L.map((e,n)=>{
-    return `<tr data-l="${esc(e.L)}"><td class="no sticky">${n+1}</td><td class="l who sticky st1"><b>${esc(e.fio||e.L)}</b><span class="small">${esc(e.np||e.fil)} · ${esc(e.L)}</span></td><td class="l">${esc(e.reg===DRB?'ДРБ':e.reg)}</td><td class="l">${esc(e.chan)}</td>`+
+    return `<tr data-l="${esc(e.L)}"><td class="no sticky">${n+1}</td><td class="l who sticky st1"><b>${esc(e.fio||e.L)}</b><span class="small">${esc(e.L)}</span></td><td class="l">${esc(e.reg===DRB?'ДРБ':e.reg)}</td><td class="l">${esc(e.chan)}</td><td class="l wrapc">${esc(e.filN)}</td><td class="l wrapc">${esc(e.npN)}</td>`+
       IS.map(i=>{ const x=e.ind[i]; const dyn=DS[i].length?DS[i].map((d,j)=>dynCell(e,i,d,j===DS[i].length-1)).join(''):`<td>${fmt(x.fact)}</td>`;
         return x.plan>0?`<td class="sep">${fmt(x.plan)}</td>${dyn}<td><span class="pcbig">${pct(x.pc)}</span>${fcChip(x.fc3)}<span class="small">3 мес ${pct(x.avg)}</span></td>`
         :`<td class="sep muted">нет плана</td>${dyn}<td class="muted">—</td>`; }).join('')+
       `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; }).join('');
   // строка «Итого» по отобранным сотрудникам
-  const filt=[S.regs.size?[...S.regs].map(r=>r===DRB?'ДРБ':r).join(', '):'регионы + ДРБ',S.chans.size?[...S.chans].join(', '):'все каналы'].concat(S.q?[`поиск «${S.q}»`]:[])
+  const filt=[S.regs.size?[...S.regs].map(r=>r===DRB?'ДРБ':r).join(', '):'регионы + ДРБ',S.chans.size?[...S.chans].join(', '):'все каналы'].concat(S.fils.size?[[...S.fils].join(', ')]:[]).concat(S.nps.size?[[...S.nps].join(', ')]:[]).concat(S.q?[`поиск «${S.q}»`]:[])
     .concat([...S.shows].map(k=>SHOW_OPTS.find(o=>o.v===k).t.toLowerCase()+(['lag','low3','nodyn'].includes(k)&&S.inds.size?` (${[...S.inds].map(i=>IND[i].short).join(', ')})`:'')))
     .concat(S.pcts.size?[`${IND[+S.pctInd].short}: ${PCT_BUCKETS.filter(b=>S.pcts.has(b.k)).map(b=>b.t).join(', ')}`]:[]);
   const totDyn=(i,d,last)=>{ if(!d.sn) return `<td class="dyn muted">—</td>`; let v=0,any=false,inc=0,anyInc=false;
@@ -724,7 +740,7 @@ function renderEmps(){
     if(!any) return `<td class="dyn muted">—</td>`;
     const incH=!anyInc?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
     return `<td class="dyn${last?' lastd':''}">${last?`<b>${fmt(v)}</b>`:fmt(v)}${incH}</td>`; };
-  const tot=L.length?`<tr class="tot"><td class="no sticky"></td><td class="l who sticky st1"><b>Итого: ${L.length} сотр.</b><span class="small">${esc(filt.join(' · '))}</span></td><td class="l"></td><td class="l"></td>`+
+  const tot=L.length?`<tr class="tot"><td class="no sticky"></td><td class="l who sticky st1"><b>Итого: ${L.length} сотр.</b><span class="small">${esc(filt.join(' · '))}</span></td><td class="l"></td><td class="l"></td><td class="l"></td><td class="l"></td>`+
     IS.map(i=>{ const a=agg(L,i); const dyn=DS[i].length?DS[i].map((d,j)=>totDyn(i,d,j===DS[i].length-1)).join(''):`<td><b>${fmt(a.fact)}</b></td>`;
       return `<td class="sep"><b>${fmt(a.plan)}</b></td>${dyn}<td><span class="pcbig">${pct(a.pc)}</span>${fcChip(a.fc3)}<span class="small">3 мес ${pct(a.avg)}</span></td>`; }).join('')+
     `<td class="cmc sep l"><span class="small">с комментариями: ${L.filter(e=>hasCm(e.L)).length}</span></td></tr>`:'';
@@ -799,7 +815,7 @@ function renderCard(){
   const o=S.empOrder; const k=o.indexOf(e.L);
   $('drPos').textContent=k>=0?`${k+1} из ${o.length}`:'';
   $('drName').textContent=e.fio||e.L;
-  $('drMeta').textContent=[e.reg===DRB?'ДРБ':e.reg,e.chan,e.np||e.fil,e.L].filter(Boolean).join(' · ');
+  $('drMeta').textContent=[e.reg===DRB?'ДРБ':e.reg,e.chan,e.filN,e.npN,e.L].filter(Boolean).join(' · ');
   const chips=e.ind.map((x,i)=>x.plan>0?`<span class="chip b-${bucketOf(x.fc3)}" title="Прогноз на конец месяца"><span class="ico">${B(bucketOf(x.fc3)).ico}</span>${IND[i].short}: ${pct(x.fc3)}</span>`:'').join('');
   const tbl=`<div class="tbl-wrap"><table><thead><tr><th class="l">Показатель</th>${m.m3.map(p=>`<th class="sep">${pShort(p)}</th>`).join('')}<th>Ср. 3 мес.</th><th class="sep">План ${pShort(m.cur)}</th><th>Факт сейчас</th><th>%</th><th class="sep">Прогноз</th><th>Темп</th></tr></thead><tbody>`+
     e.ind.map((x,i)=>`<tr><td class="l"><span class="swatch" style="background:${IND[i].color};margin-right:6px"></span>${IND[i].name}</td>`+
@@ -825,11 +841,16 @@ function renderCard(){
 
 /* ----- filters, routing, render ----- */
 /* ----- список с галочками (несколько значений) ----- */
+function cnts(list,key){ const c=new Map(); list.forEach(e=>{ const v=e[key]; if(v) c.set(v,(c.get(v)||0)+1); });
+  const sel=key==='filN'?S.fils:S.nps; sel.forEach(v=>{ if(!c.has(v)) c.set(v,0); });
+  return [...c.entries()].sort((a,b)=>a[0].localeCompare(b[0],'ru')).map(([v,n])=>({v,t:`${v} (${n})`,s:v})); }
 const SHOW_OPTS=[{v:'lag',t:'Прогноз ниже 80%'},{v:'low3',t:'Ниже 80% в среднем за 3 мес.'},{v:'nodyn',t:'Нет динамики (факт не вырос за последние 3 дня)'},{v:'cm',t:'С комментарием'},{v:'nocm',t:'Без комментария'}];
 const MSDEF={
   reg:{el:'msReg',all:'Регионы + ДРБ',label:'Регионы',opts:()=>sortedRegions().map(r=>({v:r,t:r===DRB?'ДРБ (СОВО, Online Sales)':r})),get:()=>S.regs,set:v=>{S.regs=v;},
     quick:[{t:'Только регионы',f:()=>new Set(sortedRegions().filter(r=>r!==DRB))}],after:()=>{ renderView(); }},
   chan:{el:'msChan',all:'Все каналы',label:'Каналы',opts:()=>sortedChans(S.model.emps.filter(regOk)).map(c=>({v:c,t:c})),get:()=>S.chans,set:v=>{S.chans=v;},after:()=>{ renderView(); }},
+  fil:{el:'msFil',all:'Все ОДТ / филиалы',label:'ОДТ',search:true,opts:()=>cnts(S.model.emps.filter(e=>regOk(e)&&(!S.chans.size||S.chans.has(e.chan))),'filN'),get:()=>S.fils,set:v=>{S.fils=v;},after:()=>{ renderFilters(); renderView(); }},
+  np:{el:'msNp',all:'Все города / н.п.',label:'Города',search:true,opts:()=>cnts(S.model.emps.filter(e=>regOk(e)&&(!S.chans.size||S.chans.has(e.chan))&&filOk(e)),'npN'),get:()=>S.nps,set:v=>{S.nps=v;},after:()=>{ renderFilters(); renderView(); }},
   show:{el:'msShow',all:'Все сотрудники',label:'Условия',note:'Отмеченные условия выполняются одновременно',opts:()=>SHOW_OPTS,get:()=>S.shows,set:v=>{S.shows=v;},after:()=>{ renderFilters(); renderEmps(); }},
   ind:{el:'msInd',all:'по любому показателю',label:'Показатели',note:'Для условий «прогноз», «ниже 80%», «нет динамики»: достаточно любого из отмеченных',opts:()=>IND.map((ind,i)=>({v:i,t:'по '+ind.name})),get:()=>S.inds,set:v=>{S.inds=v;},after:()=>{ renderEmps(); }},
   pct:{el:'msPct',all:'Выполнение сейчас: все',label:'Выполнение',opts:()=>{ const c=pctCounts(); return PCT_BUCKETS.map(b=>({v:b.k,t:`${b.t} (${c[b.k]||0} чел.)`,s:b.t})); },get:()=>S.pcts,set:v=>{S.pcts=v;},
@@ -841,14 +862,15 @@ function msRender(key){ const d=MSDEF[key], root=$(d.el); if(!root) return; cons
   root.querySelector('.ms-btn').innerHTML=`<span class="ms-txt">${esc(txt)}</span><span class="ms-car">▾</span>`; root.classList.toggle('on',ch.length>0);
   if(root.classList.contains('open')) msPanel(key); }
 function msPanel(key){ const d=MSDEF[key], root=$(d.el); const sel=d.get(); const opts=d.opts(); root._opts=opts;
-  root.querySelector('.ms-pop').innerHTML=(d.note?`<div class="ms-note">${esc(d.note)}</div>`:'')+
+  const q=(root._q||'').toLowerCase();
+  root.querySelector('.ms-pop').innerHTML=(d.search?`<input type="search" class="ms-search" placeholder="Найти…" value="${esc(root._q||'')}">`:'')+(d.note?`<div class="ms-note">${esc(d.note)}</div>`:'')+
     `<div class="ms-quick"><button type="button" data-q="all">Все</button>${(d.quick||[]).map((q,k)=>`<button type="button" data-q="${k}">${esc(q.t)}</button>`).join('')}</div>`+
-    opts.map((o,k)=>`<label class="ms-opt"><input type="checkbox" data-k="${k}" ${sel.has(o.v)?'checked':''}><span>${esc(o.t)}</span></label>`).join('')+
+    opts.map((o,k)=>`<label class="ms-opt"${q&&!String(o.t).toLowerCase().includes(q)?' hidden':''}><input type="checkbox" data-k="${k}" ${sel.has(o.v)?'checked':''}><span>${esc(o.t)}</span></label>`).join('')+
     `<div class="ms-foot"><button type="button" class="primary" data-q="close">Готово</button></div>`; }
 function msCloseAll(except){ document.querySelectorAll('.ms.open').forEach(r=>{ if(r!==except) r.classList.remove('open'); }); }
 document.addEventListener('click',e=>{
   const btn=e.target.closest&&e.target.closest('.ms-btn');
-  if(btn){ const root=btn.closest('.ms'); const key=Object.keys(MSDEF).find(k=>MSDEF[k].el===root.id); const open=!root.classList.contains('open'); msCloseAll(root); root.classList.toggle('open',open); if(open) msPanel(key); return; }
+  if(btn){ const root=btn.closest('.ms'); const key=Object.keys(MSDEF).find(k=>MSDEF[k].el===root.id); const open=!root.classList.contains('open'); msCloseAll(root); root.classList.toggle('open',open); if(open){ msPanel(key); const si=root.querySelector('.ms-search'); if(si) si.focus(); } return; }
   const q=e.target.closest&&e.target.closest('.ms-pop [data-q]');
   if(q){ const root=q.closest('.ms'); const key=Object.keys(MSDEF).find(k=>MSDEF[k].el===root.id); const d=MSDEF[key];
     if(q.dataset.q==='close'){ root.classList.remove('open'); return; }
@@ -861,6 +883,8 @@ document.addEventListener('change',e=>{ const cb=e.target.closest&&e.target.clos
   if(key==='show'){ if(o.v==='cm'&&cb.checked) next.delete('nocm'); if(o.v==='nocm'&&cb.checked) next.delete('cm'); }
   d.set(next); d.after(); msRender(key); msPanel(key); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') msCloseAll(null); });
+document.addEventListener('input',e=>{ const t=e.target; if(!(t.matches&&t.matches('.ms-search'))) return; const root=t.closest('.ms'); root._q=t.value; const q=t.value.toLowerCase();
+  root.querySelectorAll('.ms-opt').forEach(l=>{ l.hidden=!!q&&!l.textContent.toLowerCase().includes(q); }); });
 function renderFilters(){
   for(const k of Object.keys(MSDEF)) msRender(k);
   $('msInd').style.display=[...S.shows].some(k=>['lag','low3','nodyn'].includes(k))?'':'none';
@@ -932,7 +956,7 @@ function loadXLSX(){ return new Promise((res,rej)=>{ if(window.XLSX) return res(
 $('btnExport').addEventListener('click',async()=>{
   try{
     await loadXLSX(); const m=S.model; const L=empList();
-    const cols=[['№',(e,n)=>n+1],['ФИО',e=>e.fio],['Логин',e=>e.L],['Регион',e=>e.reg],['Канал',e=>e.chan],['Подразделение',e=>e.np||e.fil]];
+    const cols=[['№',(e,n)=>n+1],['ФИО',e=>e.fio],['Логин',e=>e.L],['Регион',e=>e.reg],['Канал',e=>e.chan],['ОДТ / филиал',e=>e.filN],['Город / н.п.',e=>e.npN]];
     IND.forEach((ind,i)=>{ const x=e=>e.ind[i];
       cols.push([`${ind.name}: план`,e=>x(e).plan>0?x(e).plan:null,'#,##0']);
       for(const d of dayCols(i)) cols.push([`${ind.name}: факт на ${dShort(d.date)}${d.sn?'':' (нет выгрузки)'}`,e=>d.sn?snapFact(d.sn,e.L,i):null,'#,##0']);
