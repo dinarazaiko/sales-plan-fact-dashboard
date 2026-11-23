@@ -208,6 +208,8 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
 .notes li{margin:5px 0;color:var(--ink2);font-size:13.5px}
 .banner{font-size:13px;color:var(--ink2);background:var(--na-bg);border-radius:8px;padding:7px 12px;margin-bottom:14px;display:none}
 .banner.on{display:block}
+.newdata{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--ink);border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.15);padding:8px 10px 8px 14px;border-radius:10px;font-size:13px;z-index:80;display:flex;gap:10px;align-items:center}
+.newdata button{font:inherit;padding:4px 12px;border-radius:6px;border:0;background:var(--accent,#2563eb);color:#fff;cursor:pointer}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:8px;font-size:13px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.on{opacity:.95}
 .sr{position:absolute;left:-9999px}
@@ -672,9 +674,11 @@ function renderNotes(){
 /* ----- employees ----- */
 function dynSnaps(i){ return curSnaps().filter(s=>inMonth(s)&&snapHas(s,i)); }
 function snapFact(s,L,i){ const a=s&&s.v[L]; return a&&a[2*i+1]!=null?a[2*i+1]:null; }
-// три последних календарных дня до даты текущей выгрузки; день без выгрузки остаётся пустым столбцом
+// три последних рабочих дня (пн–пт) до даты текущей выгрузки; рабочий день без выгрузки остаётся пустым столбцом
 function addDays(iso,k){ const [y,m,d]=iso.split('-').map(Number); const t=new Date(Date.UTC(y,m-1,d+k)); return t.toISOString().slice(0,10); }
-function dayCols(i){ const all=dynSnaps(i); return [-2,-1,0].map(k=>{ const date=addDays(S.model.date,k);
+const isWeekday=iso=>{ const [y,m,d]=iso.split('-').map(Number); const w=new Date(Date.UTC(y,m-1,d)).getUTCDay(); return w>=1&&w<=5; };
+function lastWorkdays(n){ const out=[S.model.date]; let k=-1; while(out.length<n&&k>-31){ const d=addDays(S.model.date,k); if(isWeekday(d)) out.unshift(d); k--; } return out; }
+function dayCols(i){ const all=dynSnaps(i); return lastWorkdays(3).map(date=>{
   const sn=all.find(s=>s.date===date)||null; let prev=null; for(const s of all) if(s.date<date) prev=s; return {date,sn,prev}; }); }
 function lastInc(e,i){ const w=dayCols(i).filter(d=>d.sn); if(w.length<2) return null; const a=snapFact(w[w.length-1].sn,e.L,i), b=snapFact(w[0].sn,e.L,i); return a!=null&&b!=null?a-b:null; }
 const noDyn=(e,i)=>e.ind[i].plan>0&&lastInc(e,i)===0;
@@ -844,7 +848,7 @@ function renderCard(){
 function cnts(list,key){ const c=new Map(); list.forEach(e=>{ const v=e[key]; if(v) c.set(v,(c.get(v)||0)+1); });
   const sel=key==='filN'?S.fils:S.nps; sel.forEach(v=>{ if(!c.has(v)) c.set(v,0); });
   return [...c.entries()].sort((a,b)=>a[0].localeCompare(b[0],'ru')).map(([v,n])=>({v,t:`${v} (${n})`,s:v})); }
-const SHOW_OPTS=[{v:'lag',t:'Прогноз ниже 80%'},{v:'low3',t:'Ниже 80% в среднем за 3 мес.'},{v:'nodyn',t:'Нет динамики (факт не вырос за последние 3 дня)'},{v:'cm',t:'С комментарием'},{v:'nocm',t:'Без комментария'}];
+const SHOW_OPTS=[{v:'lag',t:'Прогноз ниже 80%'},{v:'low3',t:'Ниже 80% в среднем за 3 мес.'},{v:'nodyn',t:'Нет динамики (факт не вырос за последние 3 рабочих дня)'},{v:'cm',t:'С комментарием'},{v:'nocm',t:'Без комментария'}];
 const MSDEF={
   reg:{el:'msReg',all:'Регионы + ДРБ',label:'Регионы',opts:()=>sortedRegions().map(r=>({v:r,t:r===DRB?'ДРБ (СОВО, Online Sales)':r})),get:()=>S.regs,set:v=>{S.regs=v;},
     quick:[{t:'Только регионы',f:()=>new Set(sortedRegions().filter(r=>r!==DRB))}],after:()=>{ renderView(); }},
@@ -1036,7 +1040,7 @@ function saveLocal(model,snap,isNewest){
 function loadLocal(){
   try{ const st=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(!st) return false;
     for(const x of Object.values(st.snaps||{})) S.snaps.set(x.date,x);
-    if(st.meta&&st.rows&&st.meta.date>=S.model.date){ S.model=enrich({date:st.meta.date,cur:st.meta.cur,m3:st.meta.m3,emps:st.rows}); S.source='загрузка '+dFmt(st.meta.date)+' (сохранена в этом браузере)'; }
+    if(st.meta&&st.rows&&st.meta.date>S.model.date){ /* своя загрузка в браузере — только если она новее опубликованной */ S.model=enrich({date:st.meta.date,cur:st.meta.cur,m3:st.meta.m3,emps:st.rows}); S.source='загрузка '+dFmt(st.meta.date)+' (сохранена в этом браузере)'; }
     return true; }catch(e){ return false; }
 }
 async function loadFromDb(){
@@ -1057,10 +1061,26 @@ async function loadFromDb(){
   subscribeComments();
 }
 
+/* ---------------- свежие данные на сайте ---------------- */
+function dataSig(base,txt){ return (base.exportDate||'')+'|'+txt.length; }
+async function checkNewData(){
+  if(document.hidden) return;
+  try{
+    const txt=await (await fetch('data.json?v='+Date.now(),{cache:'no-store'})).text();
+    const base=JSON.parse(txt); const sig=dataSig(base,txt);
+    if(S.dataSig&&sig!==S.dataSig&&!$('newData')){
+      const b=document.createElement('div'); b.id='newData'; b.className='newdata';
+      b.innerHTML='Вышли новые данные'+(base.exportDate?' на '+dFmt(base.exportDate):'')+' <button type="button">Обновить</button>';
+      b.querySelector('button').onclick=()=>location.reload();
+      document.body.appendChild(b);
+    }
+  }catch(e){}
+}
 /* ---------------- boot ---------------- */
 (async function(){
   try{
-    const base=await (await fetch('data.json')).json();
+    const txt=await (await fetch('data.json?v='+Date.now(),{cache:'no-store'})).text();   // без кэша: GitHub Pages держит старый файл до 10 мин
+    const base=JSON.parse(txt); S.dataSig=dataSig(base,txt);
     const model=enrich(buildModel(base.tg,base.vol,base.exportDate,null)); S.model=model; S.base=model; S.source='файлы от '+dFmt(base.exportDate);
     for(const [d,v] of Object.entries(base.shpdHist||{})){ const o={}; for(const [L,a] of Object.entries(v)) o[L]=[null,null,a[0],a[1],null,null,null,null]; S.snaps.set(d,{date:d,period:model.cur,v:o}); }
     for(const [d,v] of Object.entries(base.snaps||{})) S.snaps.set(d,{date:d,period:model.cur,v});
@@ -1069,7 +1089,8 @@ async function loadFromDb(){
     S.snaps.set(model.date,snapFromModel(model));
     renderHeader(); renderFilters(); setView(location.hash.slice(1));
   }catch(err){ $('subtitle').textContent='Не удалось загрузить данные: '+err.message; return; }
-  loadFromDb();
+  await loadFromDb();
+  if(!S.db) setInterval(checkNewData,3*60*1000);          // сайт на GitHub: раз в 3 мин проверяем, не выложил ли бот новую выгрузку
 })();
 </script>
 </body>
