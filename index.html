@@ -208,6 +208,10 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
 .notes li{margin:5px 0;color:var(--ink2);font-size:13.5px}
 .banner{font-size:13px;color:var(--ink2);background:var(--na-bg);border-radius:8px;padding:7px 12px;margin-bottom:14px;display:none}
 .banner.on{display:block}
+.upd{display:inline-block;margin-left:10px;padding:1px 9px;border-radius:999px;font-size:12px;background:var(--region-row);color:var(--ink2,inherit);white-space:nowrap}
+.upd.ok{background:rgba(22,163,74,.12);color:#15803d}
+.upd.warn{background:rgba(217,119,6,.14);color:#b45309}
+@media (prefers-color-scheme: dark){ .upd.ok{color:#4ade80} .upd.warn{color:#fbbf24} }
 .newdata{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--ink);border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.15);padding:8px 10px 8px 14px;border-radius:10px;font-size:13px;z-index:80;display:flex;gap:10px;align-items:center}
 .newdata button{font:inherit;padding:4px 12px;border-radius:6px;border:0;background:var(--accent,#2563eb);color:#fff;cursor:pointer}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:8px;font-size:13px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none}
@@ -597,7 +601,7 @@ function bucketLegend(){ return BUCKETS.slice(0,3).map(b=>`<span class="chip b-$
 
 function renderHeader(){
   const m=S.model;
-  $('subtitle').innerHTML=`Данные на <b>${dFmt(m.date)}</b> · ${pName(m.cur)}, прошло ${Math.round(m.share*100)}% дней · база прогноза — ${m.m3.map(pShort).join(', ')} · ${S.model.emps.length} сотрудников с планом на ${pShort(m.cur)}`;
+  $('subtitle').innerHTML=`Данные на <b>${dFmt(m.date)}</b> · ${pName(m.cur)}, прошло ${Math.round(m.share*100)}% дней · база прогноза — ${m.m3.map(pShort).join(', ')} · ${S.model.emps.length} сотрудников с планом на ${pShort(m.cur)}`+updLabel();
   $("curTitle").textContent=`Выполнение на ${dLong(m.date)} и прогноз на конец месяца`;
   $('curNote').textContent=`Прогноз: к факту на сегодня добавляется план на оставшиеся ${Math.round((1-m.share)*100)}% месяца, умноженный на среднее выполнение сотрудника за ${m.m3.map(pShort).join(', ')}.`;
   $('legendFc').innerHTML=bucketLegend()+'<span class="muted">цвет — по прогнозу</span>';
@@ -1007,7 +1011,7 @@ $('btnProcess').addEventListener('click',async()=>{
     const model=enrich(buildModel(tg,vol,date,S.model));
     if(!model.emps.length) throw new Error('После фильтров не осталось сотрудников — проверьте файлы.');
     const snap=snapFromModel(model); const isNewest=!S.model||date>=S.model.date;
-    S.snaps.set(date,snap); if(isNewest){ S.model=model; S.source='загрузка '+dFmt(date); }
+    S.snaps.set(date,snap); if(isNewest){ S.model=model; S.source='загрузка '+dFmt(date); S.upd={at:new Date(),how:S.db?'manual':'browser'}; }
     renderAll();
     let saved='';
     if(S.db){ setStatus('Сохраняю для всех…'); try{ await saveToDb(model,snap,isNewest); saved=' Сохранено — все, кто откроет страницу, увидят эти данные.'; }
@@ -1034,13 +1038,13 @@ const LS_KEY='salesPlanDaily.v1';
 function saveLocal(model,snap,isNewest){
   try{ const st=JSON.parse(localStorage.getItem(LS_KEY)||'{}'); st.snaps=st.snaps||{};
     st.snaps[snap.date]={date:snap.date,period:snap.period,v:snap.v};
-    if(isNewest){ const pk=packModel(model); st.meta=pk.meta; st.rows=pk.parts.flatMap(p=>p.rows); }
+    if(isNewest){ const pk=packModel(model); st.meta=pk.meta; st.rows=pk.parts.flatMap(p=>p.rows); st.savedAt=new Date().toISOString(); }
     localStorage.setItem(LS_KEY,JSON.stringify(st)); return true; }catch(e){ return false; }
 }
 function loadLocal(){
   try{ const st=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(!st) return false;
     for(const x of Object.values(st.snaps||{})) S.snaps.set(x.date,x);
-    if(st.meta&&st.rows&&st.meta.date>S.model.date){ /* своя загрузка в браузере — только если она новее опубликованной */ S.model=enrich({date:st.meta.date,cur:st.meta.cur,m3:st.meta.m3,emps:st.rows}); S.source='загрузка '+dFmt(st.meta.date)+' (сохранена в этом браузере)'; }
+    if(st.meta&&st.rows&&st.meta.date>S.model.date){ /* своя загрузка в браузере — только если она новее опубликованной */ S.model=enrich({date:st.meta.date,cur:st.meta.cur,m3:st.meta.m3,emps:st.rows}); S.source='загрузка '+dFmt(st.meta.date)+' (сохранена в этом браузере)'; S.upd={at:st.savedAt?new Date(st.savedAt):null,how:'browser'}; }
     return true; }catch(e){ return false; }
 }
 async function loadFromDb(){
@@ -1055,13 +1059,34 @@ async function loadFromDb(){
     const meta=await db.doc('meta/current').get();
     if(meta.exists){ const mt=meta.data();
       if(mt.date>=S.model.date){ const emps=[]; for(let k=0;k<mt.parts;k++){ const p=await db.doc('model/r'+k).get(); if(p.exists) emps.push(...p.data().rows.map(r=>({...r,m:JSON.parse(JSON.stringify(r.m))}))); }
-        if(emps.length){ S.model=enrich({date:mt.date,cur:mt.cur,m3:mt.m3,emps}); S.source='загрузка '+dFmt(mt.date); } } }
+        if(emps.length){ S.model=enrich({date:mt.date,cur:mt.cur,m3:mt.m3,emps}); S.source='загрузка '+dFmt(mt.date); S.upd={at:mt.savedAt?new Date(mt.savedAt):null,how:'manual'}; } } }
     clearTimeout(timer); $('banner').classList.remove('on'); cmIndex(); renderAll();
   }catch(err){ clearTimeout(timer); $('banner').textContent='Не удалось прочитать сохранённые выгрузки — показаны данные из исходных файлов.'; $('banner').classList.add('on'); }
   subscribeComments();
 }
 
 /* ---------------- свежие данные на сайте ---------------- */
+const GH_REPO='dinarazaiko/sales-plan-fact-dashboard';
+// когда и кем опубликован data.json: последний коммит на GitHub («— бот» = автоматически)
+async function loadPublishInfo(){
+  if(!/github\.io$/.test(location.hostname)) return;
+  try{
+    const r=await fetch(`https://api.github.com/repos/${GH_REPO}/commits?path=data.json&per_page=1`,{cache:'no-store'});
+    if(!r.ok) return; const c=(await r.json())[0]; if(!c) return;
+    if(S.upd&&S.upd.how==='browser') return;
+    S.upd={at:new Date(c.commit.committer.date),how:/бот/i.test(c.commit.message)?'auto':'manual'};
+    if(S.model) renderHeader();
+  }catch(e){}
+}
+function tFmt(d){ const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}.${p(d.getMonth()+1)} в ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function updLabel(){
+  const u=S.upd; if(!u||(!u.at&&!u.how)) return '';
+  const when=u.at&&!isNaN(u.at)?' '+tFmt(u.at):'';
+  if(u.how==='auto') return `<span class="upd ok" title="Бот выгрузил данные из Qlik и опубликовал сайт">● Обновлено автоматически:${when}</span>`;
+  if(u.how==='manual') return `<span class="upd" title="Файлы загружены вручную">● Загружено вручную:${when}</span>`;
+  if(u.how==='browser') return `<span class="upd warn" title="Эта загрузка сохранена только в вашем браузере">● Ваша загрузка в этом браузере:${when} — коллеги её не видят</span>`;
+  return when?`<span class="upd">● Опубликовано:${when}</span>`:'';
+}
 function dataSig(base,txt){ return (base.exportDate||'')+'|'+txt.length; }
 async function checkNewData(){
   if(document.hidden) return;
@@ -1079,8 +1104,10 @@ async function checkNewData(){
 /* ---------------- boot ---------------- */
 (async function(){
   try{
-    const txt=await (await fetch('data.json?v='+Date.now(),{cache:'no-store'})).text();   // без кэша: GitHub Pages держит старый файл до 10 мин
-    const base=JSON.parse(txt); S.dataSig=dataSig(base,txt);
+    const res=await fetch('data.json?v='+Date.now(),{cache:'no-store'});   // без кэша: GitHub Pages держит старый файл до 10 мин
+    const txt=await res.text(); const base=JSON.parse(txt); S.dataSig=dataSig(base,txt);
+    const lm=res.headers.get('Last-Modified'); S.upd={at:lm?new Date(lm):null,how:null};
+    loadPublishInfo();
     const model=enrich(buildModel(base.tg,base.vol,base.exportDate,null)); S.model=model; S.base=model; S.source='файлы от '+dFmt(base.exportDate);
     for(const [d,v] of Object.entries(base.shpdHist||{})){ const o={}; for(const [L,a] of Object.entries(v)) o[L]=[null,null,a[0],a[1],null,null,null,null]; S.snaps.set(d,{date:d,period:model.cur,v:o}); }
     for(const [d,v] of Object.entries(base.snaps||{})) S.snaps.set(d,{date:d,period:model.cur,v});
