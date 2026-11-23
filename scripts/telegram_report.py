@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Отчёт «Отстающие» (прогноз с учётом 3 мес.) для Telegram-бота.
+"""Отчёт для Telegram: выполнение по РДТ, ШПД ниже графика и «Отстающие» (прогноз с учётом 3 мес.).
 
-Берёт тот же daily/data.json, что и сайт, считает по тем же правилам и
-отправляет в Telegram сводку по регионам и каналам + Excel-файл со списком.
-
-Отстающий — сотрудник, у которого прогноз на конец месяца ниже 80%.
-Прогноз учитывает выполнение за 3 прошлых полных месяца (как на сайте):
-    прогноз = (факт + план × доля оставшихся дней × среднее выполнение за 3 мес.) / план;
-    если истории нет — вместо среднего берётся текущий темп.
-Для каждого отстающего указано, был ли он ниже 80% и в среднем за 3 месяца
-(тогда это «хронически отстающий»).
+Берёт тот же data.json, что и сайт, считает по тем же правилам и отправляет в Telegram
+несколько сообщений + Excel-файл:
+  1. Выполнение: план / факт / % по всем показателям — по регионам (РДТ) и ДРБ (СОВО, Online Sales).
+  2. ШПД ниже графика: сколько сотрудников не дотягивают до плана на сегодня
+     (с учётом опоздания данных в Qlik на LAG_DAYS дня и допуска TOLERANCE), по регионам и каналам,
+     с разбивкой по % выполнения плана: 0%, 1–20%, 21–40%, 41–60%, 61–80%, больше 80%.
+  3. Отстающие: прогноз на конец месяца ниже 80% (с учётом выполнения за 3 прошлых месяца).
 
 Запуск:
     python scripts/telegram_report.py                       # только собрать файлы (out/)
@@ -27,6 +25,10 @@ DRB = "ДРБ"
 MONTHS = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август",
           "сентябрь", "октябрь", "ноябрь", "декабрь"]
 PACE_LIMIT = 0.8
+LAG_DAYS = int(os.environ.get("QLIK_LAG_DAYS", "3"))         # данные в Qlik опаздывают на 3 дня
+TOLERANCE = float(os.environ.get("SHPD_TOLERANCE", "0.10"))   # допуск: до 10 % ниже нужного факта — не отстаёт
+BUCKETS = [("0%", 0, 0), ("1-20", 0, 0.20), ("21-40", 0.20, 0.40), ("41-60", 0.40, 0.60),
+           ("61-80", 0.60, 0.80), (">80", 0.80, 9e9)]
 
 
 def prev_p(p):
@@ -41,11 +43,10 @@ def elapsed_share(date, period):
         return 1.0
     if dp < period:
         return 0.0
-    return (d - 1) / calendar.monthrange(y, m)[1]   # выгрузка от 17-го = 16 полных дней
+    return (d - 1) / calendar.monthrange(y, m)[1]
 
 
 def build(data):
-    """Та же логика, что buildModel + enrich на сайте."""
     tg, vol, date = data["tg"], data["vol"], data["exportDate"]
     cur = max([r[0] for r in tg] + [r[0] for r in vol])
     m3 = [prev_p(prev_p(prev_p(cur))), prev_p(prev_p(cur)), prev_p(cur)]
@@ -89,7 +90,7 @@ def build(data):
 
     share = elapsed_share(date, cur)
     emps = [e for e in E.values() if e["reg"] and cur in e["m"]
-            and any((e["m"][cur][k] or 0) > 0 for k in (0, 2, 4, 6))]   # только с планом в текущем месяце
+            and any((e["m"][cur][k] or 0) > 0 for k in (0, 2, 4, 6))]
     for e in emps:
         e["ind"] = []
         for i in range(4):
@@ -120,7 +121,6 @@ def chans(emps):
 
 
 def counts(lst):
-    """[(с планом, отстают, хронически)] по 4 показателям."""
     out = []
     for i in range(4):
         withp = [e for e in lst if e["ind"][i]["fc"] is not None]
@@ -131,6 +131,109 @@ def counts(lst):
 def ddmm(date):
     y, m, d = date.split("-")
     return f"{d}.{m}.{y}"
+
+
+def fmt_num(v, money):
+    if money:
+        return f"{v / 1e6:,.1f}".replace(",", " ")
+    return f"{v:,.0f}".replace(",", " ")
+
+
+def groups(emps):
+    """Строки таблицы выполнения: регионы, итого регионы, ДРБ с каналами, всего."""
+    regs = [r for r in regions(emps) if r != DRB]
+    out = [(r, [e for e in emps if e["reg"] == r]) for r in regs]
+    out.append(("Итого рег.", [e for e in emps if e["reg"] != DRB]))
+    drb = [e for e in emps if e["reg"] == DRB]
+    if drb:
+        out.append(("ДРБ", drb))
+        out += [(" " + c, [e for e in drb if e["chan"] == c]) for c in chans(drb)]
+    out.append(("Всего", emps))
+    return out
+
+
+def totals(lst, i, cur):
+    plan = sum((e["m"][cur][2 * i] or 0) for e in lst)
+    fact = sum((e["m"][cur][2 * i + 1] or 0) for e in lst)
+    return plan, fact, (fact / plan if plan else None)
+
+
+def message_exec(M):
+    """1. Выполнение: план / факт / % по всем показателям — по РДТ и ДРБ."""
+    emps, cur = M["emps"], M["cur"]
+    parts = [f"<b>Выполнение плана на {ddmm(M['date'])}</b>\n"
+             f"{MONTHS[cur % 100 - 1]} {cur // 100}: прошло {round(M['share'] * 100)}% дней месяца.\n"]
+    W = 13
+    for i, (_, name, _) in enumerate(IND):
+        money = i == 0
+        rows = [f"{('млн ₸' if money else ''):<{W}}{'план':>8}{'факт':>8}{'%':>5}"]
+        for g, lst in groups(emps):
+            plan, fact, pc = totals(lst, i, cur)
+            rows.append(f"{g[:W]:<{W}}{fmt_num(plan, money):>8}{fmt_num(fact, money):>8}"
+                        f"{(str(round(pc * 100)) + '%') if pc is not None else '—':>5}")
+            if g.startswith("Итого"):
+                rows.append("")
+        parts.append(f"\n<b>{name}</b>\n<pre>" + html.escape("\n".join(rows)) + "</pre>")
+    return "".join(parts)
+
+
+def shpd_need_share(M):
+    """Какая доля плана ШПД должна быть в Qlik на дату выгрузки (с учётом опоздания данных)."""
+    y, m, d = map(int, M["date"].split("-"))
+    if y * 100 + m != M["cur"]:
+        return 1.0
+    return max(0, d - LAG_DAYS) / calendar.monthrange(y, m)[1]
+
+
+def shpd_rows(M):
+    """Сотрудники с планом ШПД: план, факт, нужно на дату, отстаёт ли, корзина % выполнения."""
+    need = shpd_need_share(M)
+    out = []
+    for e in M["emps"]:
+        c = e["m"][M["cur"]]
+        plan, fact = c[2] or 0, c[3] or 0
+        if plan <= 0:
+            continue
+        must = plan * need
+        lag = fact < must * (1 - TOLERANCE)
+        pc = fact / plan
+        b = next(n for n, lo, hi in BUCKETS if (pc == 0 if n == "0%" else lo < pc <= hi))
+        out.append({"e": e, "plan": plan, "fact": fact, "must": must, "pc": pc, "lag": lag, "bucket": b})
+    return out, need
+
+
+def message_shpd(M):
+    """2. ШПД ниже графика — по каждому региону отдельно, по каналам, с разбивкой по % выполнения."""
+    rows_all, need = shpd_rows(M)
+    head = (f"<b>ШПД ниже графика на {ddmm(M['date'])}</b>\n"
+            f"Данные в Qlik — с опозданием на {LAG_DAYS} дня, поэтому на дату нужно ≈{round(need * 100)}% плана. "
+            f"Отстающий — факт ниже нужного больше чем на {round(TOLERANCE * 100)}% "
+            f"(факт &lt; {round(need * (1 - TOLERANCE) * 100)}% плана).\n"
+            f"Столбцы: сотрудников с планом ШПД, из них отстают, и отстающие по % выполнения плана.\n")
+    W = 9
+    limit = need * (1 - TOLERANCE)
+    shown = [b for b in BUCKETS if b[1] < limit or b[0] == "0%"]      # группы выше порога всегда пустые
+    hdr = f"{'':<{W}}{'чел':>4}{'отст':>5}" + "".join(f"{n:>6}" for n, _, _ in shown)
+    short = {"Online Sales": "Online"}
+
+    def line(name, lst):
+        lag = [r for r in lst if r["lag"]]
+        name = short.get(name.strip(), name.strip())
+        name = (" " + name) if lst and name not in ("Итого", "Регионы", "Всего") else name
+        return f"{name[:W]:<{W}}{len(lst):>4}{len(lag):>5}" + "".join(
+            f"{sum(1 for r in lag if r['bucket'] == n):>6}" for n, _, _ in shown)
+    blocks = []
+    for reg in regions(M["emps"]):
+        R = [r for r in rows_all if r["e"]["reg"] == reg]
+        if not R:
+            continue
+        lines = [hdr] + [line(" " + c, [r for r in R if r["e"]["chan"] == c]) for c in chans([r["e"] for r in R])]
+        lines.append(line("Итого", R))
+        blocks.append(f"\n<b>{html.escape(reg)}</b>\n<pre>" + html.escape("\n".join(lines)) + "</pre>")
+    reg_rows = [r for r in rows_all if r["e"]["reg"] != DRB]
+    lines = [hdr, line("Регионы", reg_rows), line("Всего", rows_all)]
+    blocks.append("\n<b>Итого</b>\n<pre>" + html.escape("\n".join(lines)) + "</pre>")
+    return head + "".join(blocks)
 
 
 def message(M):
@@ -222,6 +325,48 @@ def build_xlsx(M, path):
     widths = [14, 12, 22, 30, 18, 18] + [11] * 20
     for k, w in enumerate(widths, 1): ws2.column_dimensions[get_column_letter(k)].width = w
     ws2.freeze_panes = "E2"; ws2.auto_filter.ref = ws2.dimensions
+
+    ws3 = wb.create_sheet("Выполнение", 0)
+    ws3.append([f"Выполнение плана на {ddmm(M['date'])} — по регионам (РДТ) и ДРБ"]); ws3["A1"].font = Font(bold=True, size=13)
+    ws3.append([])
+    ws3.append(["РДТ / канал"] + sum([[f"{n}: план", f"{n}: факт", f"{n}: %"] for _, n, _ in IND], []))
+    for c in ws3[3]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
+    for g, lst in groups(emps):
+        row = [g.strip()]
+        for i in range(4):
+            plan, fact, pc = totals(lst, i, M["cur"])
+            row += [plan, fact, pc]
+        ws3.append(row); r = ws3.max_row
+        for i in range(4):
+            ws3.cell(r, 2 + 3 * i).number_format = ws3.cell(r, 3 + 3 * i).number_format = "#,##0"
+            ws3.cell(r, 4 + 3 * i).number_format = "0%"
+            f = fill_for(row[3 + 3 * i])
+            if f: ws3.cell(r, 4 + 3 * i).fill = f
+        if not g.startswith(" "):
+            for c in ws3[r]: c.font = bold
+    ws3.column_dimensions["A"].width = 18
+    for k in range(2, 14): ws3.column_dimensions[get_column_letter(k)].width = 14
+    ws3.freeze_panes = "B4"
+
+    rows_all, need = shpd_rows(M)
+    ws4 = wb.create_sheet("ШПД ниже графика", 1)
+    ws4.append([f"ШПД ниже графика на {ddmm(M['date'])}: нужно ≈{round(need * 100)}% плана (данные Qlik с опозданием "
+                f"{LAG_DAYS} дня), отстающий — факт ниже нужного больше чем на {round(TOLERANCE * 100)}%"]); ws4["A1"].font = Font(bold=True, size=13)
+    ws4.append([])
+    ws4.append(["Регион", "Канал", "Подразделение", "ФИО", "Логин", "ШПД план", "ШПД факт", "Нужно на дату",
+                "Не хватает", "% выполнения", "Группа"])
+    for c in ws4[3]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
+    lag_rows = sorted([r for r in rows_all if r["lag"]],
+                      key=lambda r: (r["e"]["reg"] == DRB, r["e"]["reg"], CH_ORDER.index(r["e"]["chan"]) if r["e"]["chan"] in CH_ORDER else 99, r["pc"]))
+    for r in lag_rows:
+        e = r["e"]
+        ws4.append([e["reg"], e["chan"], e["np"] or e["fil"], e["fio"] or e["L"], e["L"], r["plan"], r["fact"],
+                    round(r["must"], 1), round(r["must"] - r["fact"], 1), r["pc"], r["bucket"]])
+        ws4.cell(ws4.max_row, 10).number_format = "0%"
+        ws4.cell(ws4.max_row, 10).fill = red
+    for k, w in enumerate([14, 12, 22, 30, 18, 10, 10, 12, 11, 12, 8], 1): ws4.column_dimensions[get_column_letter(k)].width = w
+    ws4.freeze_panes = "F4"; ws4.auto_filter.ref = f"A3:K{ws4.max_row}"
+    wb.active = 0
     wb.save(path)
 
 
@@ -261,18 +406,24 @@ def main():
         return
     M = build(json.loads(Path(a.data).read_text(encoding="utf-8")))
     out = Path(a.out); out.mkdir(exist_ok=True)
-    msg = message(M); (out / "message.html").write_text(msg, encoding="utf-8")
-    xlsx = out / f"otstayushchie_{M['date']}.xlsx"; build_xlsx(M, xlsx)
-    print(msg); print(f"\nФайл: {xlsx}")
+    msgs = [message_exec(M), message_shpd(M), message(M)]
+    for k, m in enumerate(msgs, 1):
+        if len(m) > 4000:
+            raise SystemExit(f"Сообщение {k} длиннее лимита Telegram: {len(m)} символов")
+    (out / "message.html").write_text("\n\n---\n\n".join(msgs), encoding="utf-8")
+    xlsx = out / f"otchet_{M['date']}.xlsx"; build_xlsx(M, xlsx)
+    print("\n\n---\n\n".join(msgs)); print(f"\nФайл: {xlsx}")
     if a.send:
         chat_ids = [c.strip() for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(",") if c.strip()]
         if not token or not chat_ids:
             sys.exit("Нужны переменные TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID")
         site = os.environ.get("SITE_URL", "").strip()
         for cid in chat_ids:
-            tg_call(token, "sendMessage", {"chat_id": cid, "text": msg + (f"\n\nСайт: {site}" if site else ""),
-                                           "parse_mode": "HTML", "disable_web_page_preview": True})
-            tg_call(token, "sendDocument", {"chat_id": cid, "caption": "Сводка и список отстающих"}, "document", xlsx)
+            for k, m in enumerate(msgs):
+                tg_call(token, "sendMessage", {"chat_id": cid, "text": m + (f"\n\nСайт: {site}" if site and k == len(msgs) - 1 else ""),
+                                               "parse_mode": "HTML", "disable_web_page_preview": True})
+            tg_call(token, "sendDocument", {"chat_id": cid, "caption": "Выполнение, ШПД ниже графика и список отстающих"},
+                    "document", xlsx)
         print("Отправлено в чаты:", ", ".join(chat_ids))
 
 
