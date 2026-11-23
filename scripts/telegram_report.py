@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Отчёт для Telegram: выполнение по РДТ, ШПД ниже графика и «Отстающие» (прогноз с учётом 3 мес.).
+"""Отчёт для Telegram: выполнение по РДТ и ШПД ниже графика (2 таблицы + Excel).
 
 Берёт тот же data.json, что и сайт, считает по тем же правилам и отправляет в Telegram
 несколько сообщений + Excel-файл:
@@ -7,7 +7,6 @@
   2. ШПД ниже графика: сколько сотрудников не дотягивают до плана на сегодня
      (с учётом опоздания данных в Qlik на LAG_DAYS дня и допуска TOLERANCE), по регионам и каналам,
      с разбивкой по % выполнения плана: 0%, 1–20%, 21–40%, 41–60%, 61–80%, больше 80%.
-  3. Отстающие: прогноз на конец месяца ниже 80% (с учётом выполнения за 3 прошлых месяца).
 
 Запуск:
     python scripts/telegram_report.py                       # только собрать файлы (out/)
@@ -269,107 +268,129 @@ def message(M):
 
 
 def build_xlsx(M, path):
+    """Excel: «Выполнение», «ШПД ниже графика» (сводка по градациям) и «Сотрудники» (подробно, по ссылке)."""
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
     red = PatternFill("solid", fgColor="FBE4E4"); amber = PatternFill("solid", fgColor="FDF1D3"); green = PatternFill("solid", fgColor="E1F3E1")
-    bold = Font(bold=True); grey = PatternFill("solid", fgColor="F0EFEC")
+    total_fill = PatternFill("solid", fgColor="A9D8A9")        # строки «Итого» — зелёные
+    head_fill = PatternFill("solid", fgColor="F0EFEC")
+    bold = Font(bold=True); link_font = Font(color="0563C1", underline="single")
+    thin = Side(style="thin", color="D0D0D0"); box = Border(top=thin, bottom=thin, left=thin, right=thin)
     fill_for = lambda v: None if v is None else red if v < 0.8 else amber if v < 1 else green
-    emps = M["emps"]; wb = Workbook()
+    emps, cur = M["emps"], M["cur"]
+    wb = Workbook()
 
-    ws = wb.active; ws.title = "Сводка"
-    ws.append([f"Отстающие на {ddmm(M['date'])}: прогноз на конец месяца ниже 80% (с учётом 3 прошлых месяцев)"]); ws["A1"].font = Font(bold=True, size=13)
-    ws.append([f"Прошло {round(M['share'] * 100)}% дней месяца. «Хронически» — прогноз ниже 80% и ниже 80% в среднем за 3 прошлых месяца."])
+    def header(ws, row):
+        for c in ws[row]:
+            c.font = bold; c.fill = head_fill; c.border = box
+            c.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+
+    def total_row(ws, r):
+        for c in ws[r]:
+            c.font = bold; c.fill = total_fill
+
+    def link(ws, cell, text, target):
+        ws[cell] = text
+        ws[cell].hyperlink = f"#'{target}'!A1"
+        ws[cell].font = link_font
+
+    # ---------- 1. Выполнение ----------
+    ws = wb.active; ws.title = "Выполнение"
+    ws["A1"] = f"Выполнение плана на {ddmm(M['date'])} — по регионам (РДТ) и ДРБ"; ws["A1"].font = Font(bold=True, size=13)
+    link(ws, "A2", "Подробно по сотрудникам →", "Сотрудники")
     ws.append([])
-    ws.append(["Регион", "Канал", "Сотрудников"] + sum([[f"{n}: с планом", f"{n}: отстают", f"{n}: % отстающих", f"{n}: из них хронически"] for _, n, _ in IND], []))
-    for c in ws[4]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
-
-    def put(reg, ch, lst, is_total=False):
-        row = [reg, ch, len(lst)]
-        for withp, lag, chron in counts(lst):
-            row += [withp, lag, (lag / withp) if withp else None, chron]
-        ws.append(row)
-        r = ws.max_row
-        for k in range(4):
-            ws.cell(r, 6 + 4 * k).number_format = "0%"
-        if is_total or not ch:
-            for c in ws[r]: c.font = bold; c.fill = grey
-    for reg in regions(emps):
-        LR = [e for e in emps if e["reg"] == reg]
-        put(reg + (" (не регион)" if reg == DRB else ""), "", LR)
-        if reg != DRB:
-            for c in chans(LR):
-                put(reg, c, [e for e in LR if e["chan"] == c])
-    put("Итого по регионам", "", [e for e in emps if e["reg"] != DRB], True)
-    put("Всего с ДРБ", "", emps, True)
-    ws.column_dimensions["A"].width = 22; ws.column_dimensions["B"].width = 14
-    for k in range(3, 3 + 1 + 16): ws.column_dimensions[get_column_letter(k)].width = 12
-    ws.freeze_panes = "C5"
-
-    ws2 = wb.create_sheet("Сотрудники")
-    ws2.append(["Регион", "Канал", "Подразделение", "ФИО", "Логин", "Отстаёт по показателям"] +
-               sum([[f"{n}: план", f"{n}: факт", f"{n}: % на дату", f"{n}: прогноз (3 мес.)", f"{n}: ср. 3 мес."] for _, n, _ in IND], []))
-    for c in ws2[1]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
-    lag_emps = [e for e in emps if any(x["lag"] for x in e["ind"])]
-    lag_emps.sort(key=lambda e: ((e["reg"] == DRB), e["reg"], CH_ORDER.index(e["chan"]) if e["chan"] in CH_ORDER else 99, -sum(x["lag"] for x in e["ind"]), e["fio"]))
-    for e in lag_emps:
-        row = [e["reg"], e["chan"], e["np"] or e["fil"], e["fio"] or e["L"], e["L"], ", ".join(IND[i][2] for i, x in enumerate(e["ind"]) if x["lag"])]
-        for x in e["ind"]:
-            row += [x["plan"], x["fact"], x["pc"], x["fc"], x["avg"]]
-        ws2.append(row)
-        r = ws2.max_row
-        for k, x in enumerate(e["ind"]):
-            base = 7 + 5 * k
-            ws2.cell(r, base).number_format = ws2.cell(r, base + 1).number_format = "#,##0"
-            for j, v in ((2, x["pc"]), (3, x["fc"]), (4, x["avg"])):
-                cell = ws2.cell(r, base + j); cell.number_format = "0%"
-            for j, v in ((3, x["fc"]), (4, x["avg"])):
-                f = fill_for(v)
-                if f: ws2.cell(r, base + j).fill = f
-    widths = [14, 12, 22, 30, 18, 18] + [11] * 20
-    for k, w in enumerate(widths, 1): ws2.column_dimensions[get_column_letter(k)].width = w
-    ws2.freeze_panes = "E2"; ws2.auto_filter.ref = ws2.dimensions
-
-    ws3 = wb.create_sheet("Выполнение", 0)
-    ws3.append([f"Выполнение плана на {ddmm(M['date'])} — по регионам (РДТ) и ДРБ"]); ws3["A1"].font = Font(bold=True, size=13)
-    ws3.append([])
-    ws3.append(["РДТ / канал"] + sum([[f"{n}: план", f"{n}: факт", f"{n}: %"] for _, n, _ in IND], []))
-    for c in ws3[3]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.append(["РДТ"] + sum([[f"{n}: план", f"{n}: факт", f"{n}: %"] for _, n, _ in IND], []))
+    header(ws, 4)
     for g, lst in groups(emps):
         row = [g.strip()]
         for i in range(4):
-            plan, fact, pc = totals(lst, i, M["cur"])
-            row += [plan, fact, pc]
+            plan, fact, pc = totals(lst, i, cur)
+            row += [round(plan), round(fact), round(pc, 2) if pc is not None else None]
+        ws.append(row); r = ws.max_row
+        is_total = g.startswith("Итого") or g.startswith("Всего")
+        for i in range(4):
+            ws.cell(r, 2 + 3 * i).number_format = ws.cell(r, 3 + 3 * i).number_format = "#,##0"
+            ws.cell(r, 4 + 3 * i).number_format = "0%"
+            f = fill_for(row[3 + 3 * i])
+            if f and not is_total:
+                ws.cell(r, 4 + 3 * i).fill = f
+        for c in ws[r]: c.border = box
+        if is_total:
+            total_row(ws, r)
+    ws.column_dimensions["A"].width = 16
+    for k in range(2, 14): ws.column_dimensions[get_column_letter(k)].width = 13
+    ws.freeze_panes = "B5"
+
+    # ---------- 2. ШПД ниже графика (сводка по градациям) ----------
+    rows_all, need = shpd_rows(M)
+    limit = need * (1 - TOLERANCE)
+    ws2 = wb.create_sheet("ШПД ниже графика")
+    ws2["A1"] = f"ШПД ниже графика на {ddmm(M['date'])}"; ws2["A1"].font = Font(bold=True, size=13)
+    ws2["A2"] = (f"Нужно на дату ≈{round(need * 100)}% плана (данные Qlik с опозданием {LAG_DAYS} дня). "
+                 f"Отстающий — факт ниже нужного больше чем на {round(TOLERANCE * 100)}% (факт < {round(limit * 100)}% плана). "
+                 f"Градации — % выполнения плана ШПД у отстающих.")
+    link(ws2, "A3", "Подробно по сотрудникам →", "Сотрудники")
+    ws2.append([])
+    bnames = {"0%": "0%", "1-20": "1–20%", "21-40": "21–40%", "41-60": "41–60%", "61-80": "61–80%", ">80": "больше 80%"}
+    shown = [b for b in BUCKETS if b[1] < limit or b[0] == "0%"]      # группы выше порога всегда пустые
+    ws2.append(["РДТ", "Канал", "С планом ШПД, чел", "Отстают, чел", "% отстающих"] +
+               [bnames[n] for n, _, _ in shown] + ["Отставание, шт"])
+    header(ws2, 5)
+
+    def put(reg, ch, lst, is_total=False):
+        lag = [x for x in lst if x["lag"]]
+        row = [reg, ch, len(lst), len(lag), round(len(lag) / len(lst), 2) if lst else None]
+        row += [sum(1 for x in lag if x["bucket"] == n) for n, _, _ in shown]
+        row.append(round(sum(x["must"] - x["fact"] for x in lag)))
+        ws2.append(row); r = ws2.max_row
+        ws2.cell(r, 5).number_format = "0%"
+        ws2.cell(r, len(row)).number_format = "#,##0"
+        for c in ws2[r]: c.border = box
+        if is_total:
+            total_row(ws2, r)
+    for reg in regions(emps):
+        R = [x for x in rows_all if x["e"]["reg"] == reg]
+        if not R or reg == DRB:
+            continue
+        for c in chans([x["e"] for x in R]):
+            put(reg, c, [x for x in R if x["e"]["chan"] == c])
+        put(f"Итого {reg}", "", R, True)
+    put("Итого регионы", "", [x for x in rows_all if x["e"]["reg"] != DRB], True)
+    drb = [x for x in rows_all if x["e"]["reg"] == DRB]
+    if drb:
+        put("ДРБ", "", drb)
+    put("Всего", "", rows_all, True)
+    for k, w in enumerate([20, 10, 12, 11, 11] + [10] * len(shown) + [13], 1):
+        ws2.column_dimensions[get_column_letter(k)].width = w
+    ws2.freeze_panes = "C6"
+
+    # ---------- 3. Сотрудники (подробно, открывается по ссылке) ----------
+    ws3 = wb.create_sheet("Сотрудники")
+    ws3["A1"] = f"Выполнение по сотрудникам на {ddmm(M['date'])}"; ws3["A1"].font = Font(bold=True, size=13)
+    link(ws3, "A2", "← К выполнению", "Выполнение")
+    ws3.append([])
+    ws3.append(["РДТ", "Канал", "Подразделение", "ФИО", "Логин"] +
+               sum([[f"{n}: план", f"{n}: факт", f"{n}: %"] for _, n, _ in IND], []))
+    header(ws3, 4)
+    order = sorted(emps, key=lambda e: ((e["reg"] == DRB), e["reg"], CH_ORDER.index(e["chan"]) if e["chan"] in CH_ORDER else 99,
+                                        e["fio"] or e["L"]))
+    for e in order:
+        c = e["m"][cur]
+        row = [e["reg"], e["chan"], e["np"] or e["fil"], e["fio"] or e["L"], e["L"]]
+        for i in range(4):
+            plan, fact = c[2 * i], c[2 * i + 1]
+            pc = (fact or 0) / plan if plan else None
+            row += [round(plan) if plan is not None else None, round(fact) if fact is not None else None,
+                    round(pc, 2) if pc is not None else None]
         ws3.append(row); r = ws3.max_row
         for i in range(4):
-            ws3.cell(r, 2 + 3 * i).number_format = ws3.cell(r, 3 + 3 * i).number_format = "#,##0"
-            ws3.cell(r, 4 + 3 * i).number_format = "0%"
-            f = fill_for(row[3 + 3 * i])
-            if f: ws3.cell(r, 4 + 3 * i).fill = f
-        if not g.startswith(" "):
-            for c in ws3[r]: c.font = bold
-    ws3.column_dimensions["A"].width = 18
-    for k in range(2, 14): ws3.column_dimensions[get_column_letter(k)].width = 14
-    ws3.freeze_panes = "B4"
-
-    rows_all, need = shpd_rows(M)
-    ws4 = wb.create_sheet("ШПД ниже графика", 1)
-    ws4.append([f"ШПД ниже графика на {ddmm(M['date'])}: нужно ≈{round(need * 100)}% плана (данные Qlik с опозданием "
-                f"{LAG_DAYS} дня), отстающий — факт ниже нужного больше чем на {round(TOLERANCE * 100)}%"]); ws4["A1"].font = Font(bold=True, size=13)
-    ws4.append([])
-    ws4.append(["Регион", "Канал", "Подразделение", "ФИО", "Логин", "ШПД план", "ШПД факт", "Нужно на дату",
-                "Не хватает", "% выполнения", "Группа"])
-    for c in ws4[3]: c.font = bold; c.alignment = Alignment(wrap_text=True, vertical="top")
-    lag_rows = sorted([r for r in rows_all if r["lag"]],
-                      key=lambda r: (r["e"]["reg"] == DRB, r["e"]["reg"], CH_ORDER.index(r["e"]["chan"]) if r["e"]["chan"] in CH_ORDER else 99, r["pc"]))
-    for r in lag_rows:
-        e = r["e"]
-        ws4.append([e["reg"], e["chan"], e["np"] or e["fil"], e["fio"] or e["L"], e["L"], r["plan"], r["fact"],
-                    round(r["must"], 1), round(r["must"] - r["fact"], 1), r["pc"], r["bucket"]])
-        ws4.cell(ws4.max_row, 10).number_format = "0%"
-        ws4.cell(ws4.max_row, 10).fill = red
-    for k, w in enumerate([14, 12, 22, 30, 18, 10, 10, 12, 11, 12, 8], 1): ws4.column_dimensions[get_column_letter(k)].width = w
-    ws4.freeze_panes = "F4"; ws4.auto_filter.ref = f"A3:K{ws4.max_row}"
+            ws3.cell(r, 6 + 3 * i).number_format = ws3.cell(r, 7 + 3 * i).number_format = "#,##0"
+            ws3.cell(r, 8 + 3 * i).number_format = "0%"
+            f = fill_for(row[7 + 3 * i])
+            if f: ws3.cell(r, 8 + 3 * i).fill = f
+    for k, w in enumerate([14, 12, 22, 30, 18] + [11] * 12, 1): ws3.column_dimensions[get_column_letter(k)].width = w
+    ws3.freeze_panes = "F5"; ws3.auto_filter.ref = f"A4:{get_column_letter(ws3.max_column)}{ws3.max_row}"
     wb.active = 0
     wb.save(path)
 
@@ -410,7 +431,7 @@ def main():
         return
     M = build(json.loads(Path(a.data).read_text(encoding="utf-8")))
     out = Path(a.out); out.mkdir(exist_ok=True)
-    msgs = [message_exec(M), message_shpd(M), message(M)]
+    msgs = [message_exec(M), message_shpd(M)]
     for k, m in enumerate(msgs, 1):
         if len(m) > 4000:
             raise SystemExit(f"Сообщение {k} длиннее лимита Telegram: {len(m)} символов")
@@ -426,7 +447,7 @@ def main():
             for k, m in enumerate(msgs):
                 tg_call(token, "sendMessage", {"chat_id": cid, "text": m + (f"\n\nСайт: {site}" if site and k == len(msgs) - 1 else ""),
                                                "parse_mode": "HTML", "disable_web_page_preview": True})
-            tg_call(token, "sendDocument", {"chat_id": cid, "caption": "Выполнение, ШПД ниже графика и список отстающих"},
+            tg_call(token, "sendDocument", {"chat_id": cid, "caption": "Выполнение и ШПД ниже графика"},
                     "document", xlsx)
         print("Отправлено в чаты:", ", ".join(chat_ids))
 
