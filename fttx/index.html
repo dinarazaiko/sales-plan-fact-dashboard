@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Новые установки FTTx — очередь и выполнение</title>
+<style>
+/* VOICE: рабочая сводка, как «Выполнение плана продаж» — спокойно, по-газетному.
+   IDEA: ежедневный лист диспетчера: очередь против темпа выполнения.
+   PICTURE: таблица регион → филиал с полосами очереди и «днями на очередь», график выполнения по дням.
+   COLOUR and TYPE: палитра и шрифт сайта плана продаж (системный шрифт, синий акцент, светофор).
+   LAYOUT: шапка с фильтром региона, вкладки Сводка / Динамика, карточки на всю ширину. */
+:root{
+  color-scheme: light;
+  --page:#f4f3ef; --surface:#fcfcfb; --card:#ffffff;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e6e5df; --axis:#c3c2b7; --border:rgba(11,11,11,0.10);
+  --s1:#2a78d6; --s1l:#a9c9f0; --s2:#eb6834;
+  --low-bg:#fbe4e4; --low-ink:#8f1f1f; --low:#d03b3b;
+  --mid-bg:#fdf1d3; --mid-ink:#6e4a00; --mid:#fab219;
+  --high-bg:#e1f3e1; --high-ink:#0b5d0b; --high:#0ca30c;
+  --na-bg:#f0efec; --na-ink:#52514e;
+  --accent:#2a78d6; --row-hover:#f6f5f1; --region-row:#f1f0eb; --top:#ffffff;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme=light]){
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#151514; --card:#1a1a19;
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+  --s1:#3987e5; --s1l:#2b4c74; --s2:#d95926;
+  --low-bg:#3a1a1a; --low-ink:#f3a5a5; --mid-bg:#3a2e10; --mid-ink:#f5d58a;
+  --high-bg:#16311a; --high-ink:#9ddc9d; --na-bg:#262624; --na-ink:#c3c2b7;
+  --accent:#3987e5; --row-hover:#20201f; --region-row:#1f1f1d; --top:#151514;
+}}
+:root[data-theme=dark]{
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#151514; --card:#1a1a19;
+  --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10);
+  --s1:#3987e5; --s1l:#2b4c74; --s2:#d95926;
+  --low-bg:#3a1a1a; --low-ink:#f3a5a5; --mid-bg:#3a2e10; --mid-ink:#f5d58a;
+  --high-bg:#16311a; --high-ink:#9ddc9d; --na-bg:#262624; --na-ink:#c3c2b7;
+  --accent:#3987e5; --row-hover:#20201f; --region-row:#1f1f1d; --top:#151514;
+}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;background:var(--page);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:clip}
+.small{display:block;font-size:12px;color:var(--muted);font-weight:400;line-height:1.3}
+.topbar{position:sticky;top:0;z-index:20;background:var(--top);border-bottom:1px solid var(--border)}
+.topbar-in{max-width:1680px;margin:0 auto;padding:12px 24px 0;display:flex;flex-direction:column;gap:10px}
+.trow{display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+h1{font-size:21px;margin:0;font-weight:680;letter-spacing:-0.01em}
+.sub{color:var(--ink2);margin:2px 0 0;font-size:13.5px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-size:14px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--ink);cursor:pointer;min-height:36px}
+button:hover{filter:brightness(0.97)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav{display:flex;gap:2px}
+.nav button{padding:10px 18px;color:var(--ink2);background:none;border:0;border-radius:0;font-weight:560;font-size:15px;border-bottom:3px solid transparent}
+.nav button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)}
+.seg button{border:0;border-radius:0;padding:6px 12px;font-size:13.5px;min-height:34px}
+.seg button.on{background:var(--ink);color:var(--surface)}
+.wrap{max-width:1680px;margin:0 auto;padding:18px 24px 60px}
+.view{display:none}.view.on{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+.card-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:12px}
+h2{font-size:18px;margin:0;font-weight:640}
+.note{font-size:13px;color:var(--ink2);margin:3px 0 0}
+.legend{display:flex;flex-wrap:wrap;gap:8px;font-size:12.5px;align-items:center;color:var(--ink2)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:13px;font-weight:620;white-space:nowrap}
+.b-low{background:var(--low-bg);color:var(--low-ink)}.b-mid{background:var(--mid-bg);color:var(--mid-ink)}
+.b-high{background:var(--high-bg);color:var(--high-ink)}.b-na{background:var(--na-bg);color:var(--na-ink)}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media (max-width:1100px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.tiles{grid-template-columns:1fr}.topbar-in,.wrap{padding-left:12px;padding-right:12px}}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.t-name{font-size:14px;color:var(--ink2);font-weight:620}
+.t-big{font-size:clamp(24px,3vw,30px);font-weight:700;letter-spacing:-0.02em;line-height:1.15;font-variant-numeric:tabular-nums}
+.t-line{font-size:13.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.t-sep{border-top:1px dashed var(--grid);margin:8px 0 2px}
+.t-big .chip{font-size:20px;padding:3px 12px;vertical-align:middle}
+.up{color:var(--high-ink)}.down{color:var(--low-ink)}
+.tbl-wrap{overflow:auto;max-width:100%;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;border-bottom:1px solid var(--grid);text-align:right;white-space:nowrap;vertical-align:middle}
+th{position:sticky;top:0;background:var(--card);z-index:3;font-weight:620;color:var(--ink2);font-size:12.5px;vertical-align:bottom}
+thead tr:nth-child(2) th{top:31px}
+th.grp{text-align:center;border-left:1px solid var(--grid);color:var(--ink);font-size:13px}
+td.l,th.l{text-align:left}
+td.sep,th.sep{border-left:1px solid var(--grid)}
+.sticky{position:sticky;left:0;background:var(--card);z-index:2}
+th.sticky{z-index:4}
+tr.reg td{background:var(--region-row);font-weight:650;cursor:pointer}
+tr.reg td.sticky{background:var(--region-row)}
+tr.total td{font-weight:700;border-top:2px solid var(--axis);background:var(--region-row)}
+tbody tr:not(.reg):not(.total):hover td{background:var(--row-hover)}
+td.fil{padding-left:28px;min-width:220px}
+.car{display:inline-block;width:14px;color:var(--muted);font-size:11px}
+.qbar{display:grid;grid-template-columns:auto 110px;gap:8px;align-items:center;justify-content:end}
+.qbar .bar{height:10px;border-radius:3px;background:var(--grid);overflow:hidden;display:flex}
+.qbar .bar i{display:block;height:100%;background:var(--s1)}
+.qbar .bar i+i{background:var(--s1l)}
+.spark{display:block}
+.fig{position:relative;height:320px}
+.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+.cmp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:14px}
+#cmpTable td .small{display:block;font-size:11.5px}
+@media (max-width:800px){.cmp{grid-template-columns:1fr}}
+td.hm{min-width:36px}
+#dynTable th,#dynTable td{padding:7px 7px}
+#dynTable td.mt,#dynTable th.mt{font-weight:700}
+.notes li{margin:5px 0;color:var(--ink2);font-size:13.5px}
+.notes code{font-size:12px;background:var(--na-bg);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+.tip{position:fixed;pointer-events:none;background:var(--card);color:var(--ink);border:1px solid var(--border);box-shadow:0 4px 18px rgba(0,0,0,.14);border-radius:8px;padding:8px 10px;font-size:12.5px;z-index:60;display:none;max-width:320px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:8px;font-size:13px;z-index:70;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:.95}
+.err{padding:40px;text-align:center;color:var(--low-ink)}
+.frow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;background:var(--region-row);border-radius:10px}
+.flbl{font-size:14px;font-weight:620;color:var(--ink2)}
+.fsum{font-size:13px;color:var(--ink2)}
+.frow .ms-btn{min-width:220px;font-size:15px;padding:8px 12px;min-height:40px}
+.ms{position:relative;display:inline-block}
+.ms-btn{display:inline-flex;align-items:center;gap:8px;min-width:150px;max-width:280px;justify-content:space-between;text-align:left;padding:7px 10px}
+.ms-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-car{color:var(--muted);font-size:11px}
+.ms.on .ms-btn{border-color:var(--accent);font-weight:600;box-shadow:0 0 0 2px var(--row-hover)}
+.ms-pop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:30;min-width:280px;max-width:360px;max-height:60vh;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.16);padding:8px}
+.ms.open .ms-pop{display:block}
+.ms-quick{display:flex;gap:6px;padding:2px 2px 8px;border-bottom:1px solid var(--grid);margin-bottom:4px}
+.ms-quick button{padding:3px 10px;font-size:12.5px;min-height:30px}
+.ms-opt{display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;cursor:pointer;font-size:14px;line-height:1.3}
+.ms-opt:hover{background:var(--row-hover)}
+.ms-opt input{width:16px;height:16px;accent-color:var(--accent);flex:none;margin:0}
+.ms-opt .cnt{margin-left:auto;color:var(--muted);font-size:12px}
+.ms-grp{font-size:11.5px;color:var(--muted);padding:6px 6px 2px;font-weight:600}
+.fchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--ink2);margin:-4px 0 12px}
+.fchips:empty{display:none}
+.fchips .chip{background:var(--na-bg);color:var(--ink);font-weight:560}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="trow">
+      <div>
+        <h1>Новые установки FTTx · очередь, выполнение и план</h1>
+        <p class="sub" id="subtitle">Загрузка данных…</p>
+      </div>
+      <div class="controls">
+        <button id="btnFull" title="На весь экран">⛶ Экран</button>
+        <button id="btnExport">Скачать Excel</button>
+      </div>
+    </div>
+    <div class="frow">
+      <span class="flbl">Показать:</span>
+      <div class="ms" id="msReg"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+      <div class="ms" id="msFil"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
+      <button id="btnReset" style="display:none">Сбросить</button>
+      <span class="fsum" id="fsum"></span>
+    </div>
+    <nav class="nav" id="nav">
+      <button type="button" data-v="svodka">Сводка</button>
+      <button type="button" data-v="dinamika">Динамика</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="view" id="v-svodka">
+    <div class="card">
+      <div class="card-head">
+        <div><h2 id="curTitle">Сейчас</h2><p class="note" id="curNote"></p></div>
+        <div class="legend"><span>Прогноз выполнения плана:</span><span class="chip b-high">≥100%</span><span class="chip b-mid">90–99%</span><span class="chip b-low">&lt;90%</span></div>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>Регион → ОДТ</h2><p class="note">Нажмите на строку региона, чтобы свернуть или раскрыть ОДТ. Полоса: тёмная часть — чистая очередь, светлая — остальная очередь (перенос, будущие даты, без даты).</p></div>
+      </div>
+      <div class="tbl-wrap" style="max-height:75vh"><table id="rcTable"></table></div>
+    </div>
+    <div class="card">
+      <h2>Как считается</h2>
+      <ul class="notes" id="notes"></ul>
+    </div>
+  </section>
+
+  <section class="view" id="v-dinamika">
+    <div class="card">
+      <div class="card-head"><div><h2>Сравнение за 3 месяца</h2><p class="note" id="cmpNote"></p></div>
+        <div class="legend"><span>% плана:</span><span class="chip b-high">≥100%</span><span class="chip b-mid">90–99%</span><span class="chip b-low">&lt;90%</span></div></div>
+      <div class="cmp" id="cmp"></div>
+      <div class="tbl-wrap" style="max-height:75vh"><table id="cmpTable"></table></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div><h2 id="dynTitle">Выполнено установок по дням</h2><p class="note" id="dynNote"></p></div>
+        <div class="legend"><span class="chip" style="background:var(--s1);color:#fff">рабочий день</span><span class="chip" style="background:var(--s1l);color:var(--ink)">воскресенье</span><span class="chip" style="background:var(--na-bg);color:var(--ink2);border:1px dashed var(--axis)">сегодня, неполный день</span><span style="display:inline-flex;align-items:center;gap:5px"><svg width="22" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--s2)" stroke-width="2.5"/></svg>среднее за 6 рабочих дней</span></div>
+      </div>
+      <div class="fig" id="fig"><svg id="dynSvg" role="img" aria-label="Выполнено установок по дням"></svg></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div><h2 id="dtTitle">Текущий месяц по дням, по ОДТ</h2><p class="note">Выполнено установок за каждый день месяца. Цвет ячейки — относительно среднего рабочего дня этой ОДТ: зелёный выше, красный ниже чем на 30%. Таблица прокручивается вправо.</p></div></div>
+      <div class="tbl-wrap" style="max-height:75vh"><table id="dynTable"></table></div>
+    </div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const nf=new Intl.NumberFormat('ru-RU');
+const n=v=>nf.format(Math.round(v));
+const n1=v=>v.toLocaleString('ru-RU',{minimumFractionDigits:1,maximumFractionDigits:1});
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MON=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const MONN=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+const WD=['вс','пн','вт','ср','чт','пт','сб'];
+const pd=s=>new Date(s+'T00:00:00Z');
+const dLabel=s=>{const d=pd(s);return d.getUTCDate()+' '+MON[d.getUTCMonth()];};
+const S={view:'svodka',sort:'name',collapsed:new Set(),D:null,f:{reg:new Set(),fil:new Set(),fc:new Set()}};
+const FC=[{k:'high',t:'Выполнят план (≥100%)'},{k:'mid',t:'В зоне риска (90–99%)'},{k:'low',t:'Отстают (<90%)'}];
+const toast=t=>{const e=$('toast');e.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),2600);};
+
+function model(D){
+  const days=D.days, T=days.length-1;               // последний день — сегодня, неполный
+  const isSun=days.map(s=>pd(s).getUTCDay()===0);
+  const work=[]; for(let i=T-1;i>=0&&work.length<6;i--) if(!isSun[i]) work.push(i);
+  // оставшиеся дни месяца, включая сегодня: рабочие и воскресенья
+  const t0=pd(days[T]); const mEnd=new Date(Date.UTC(t0.getUTCFullYear(),t0.getUTCMonth()+1,0)).getUTCDate();
+  let remW=0,remS=0; for(let d=t0.getUTCDate();d<=mEnd;d++){ new Date(Date.UTC(t0.getUTCFullYear(),t0.getUTCMonth(),d)).getUTCDay()===0?remS++:remW++; }
+  const suns=[]; for(let i=T-1;i>=0&&suns.length<2;i--) if(isSun[i]) suns.push(i);
+  const fin=o=>{o.other=o.total-o.clean;o.daysQ=o.avg>0?o.clean/o.avg:null;
+    o.pct=o.plan>0?o.doneMonth/o.plan*100:null;
+    o.fc=o.doneMonth-o.doneToday+o.avg*remW+o.avgSun*remS; o.fcPct=o.plan>0?o.fc/o.plan*100:null;
+    o.rest=Math.max(0,o.plan-o.doneMonth); o.needDay=o.plan>0?o.rest/(remW||1):null; return o;};
+  const fils=D.rows.map(r=>{
+    const v=D.daily[r.fil]||days.map(()=>0);
+    const avg=work.reduce((a,i)=>a+v[i],0)/work.length;
+    const avgSun=suns.length?suns.reduce((a,i)=>a+v[i],0)/suns.length:0;
+    return fin({...r,v,avg,avgSun});
+  });
+  const KEYS=['total','clean','createdToday','doneToday','doneYesterday','doneMonth','avg','avgSun','plan','salesFact'];
+  const sum=list=>{const o={v:days.map(()=>0)};KEYS.forEach(k=>o[k]=0);
+    list.forEach(f=>{KEYS.forEach(k=>o[k]+=f[k]||0);f.v.forEach((x,i)=>o.v[i]+=x);});
+    return fin(o);};
+  const regs=[...new Set(fils.map(f=>f.rdt))].map(r=>{const fl=fils.filter(f=>f.rdt===r);return {rdt:r,fils:fl,...sum(fl)};});
+  return {days,T,isSun,work,fils,regs,sum,remW,remS};
+}
+const band=d=>d==null?'na':d<=1?'high':d<=2?'mid':'low';
+const bandP=p=>p==null?'na':p>=100?'high':p>=90?'mid':'low';
+const chipPct=p=>p==null?'<span class="chip b-na">—</span>':`<span class="chip b-${bandP(p)}">${n(p)}%</span>`;
+const chipDays=d=>d==null?'<span class="chip b-na">—</span>':`<span class="chip b-${band(d)}">${n1(d)}</span>`;
+const anyF=()=>S.f.reg.size||S.f.fil.size||S.f.fc.size;
+function filt(M){ return M.fils.filter(f=>(!S.f.reg.size||S.f.reg.has(f.rdt))&&(!S.f.fil.size||S.f.fil.has(f.fil))&&(!S.f.fc.size||S.f.fc.has(bandP(f.fcPct)))); }
+function fregs(M){ const fl=filt(M); return [...new Set(fl.map(f=>f.rdt))].map(r=>{const x=fl.filter(f=>f.rdt===r);return {rdt:r,fils:x,...M.sum(x)};}); }
+function scopeName(){ if(!anyF()) return 'Все регионы'; const p=[]; if(S.f.reg.size) p.push([...S.f.reg].join(', ')); if(S.f.fil.size) p.push(S.f.fil.size<=2?[...S.f.fil].join(', '):S.f.fil.size+' ОДТ'); if(S.f.fc.size) p.push(FC.filter(x=>S.f.fc.has(x.k)).map(x=>x.t.split(' (')[0].toLowerCase()).join(', ')); return p.join(' · '); }
+function scope(M){ const fl=filt(M); return {name:scopeName(),fils:fl,...M.sum(fl)}; }
+
+function renderTiles(M){
+  const s=scope(M), D=S.D, ts=D.lastEvent.slice(11,16), day=M.days[M.T];
+  const prevWork=M.work[0];
+  $('curTitle').textContent=(anyF()?scopeName()+' · ':'')+'на '+dLabel(day)+', '+D.asOf.slice(11,16);
+  if(!s.fils.length){ $('tiles').innerHTML='<div class="tile" style="grid-column:1/-1">Под выбранные фильтры не попала ни одна ОДТ.</div>'; return; }
+  $('curNote').textContent=`Остаток плана делится на ${M.remW} рабочих дней до конца месяца при 6-дневной неделе (пн–сб), сегодняшний день включён.`;
+  const pct=s.total?s.clean/s.total*100:0;
+  const mon=MON[pd(day).getUTCMonth()], monN=MONN[pd(day).getUTCMonth()];
+  $('tiles').innerHTML=[
+    `<div class="tile"><div class="t-name">Общая очередь</div><div class="t-big">${n(s.total)}</div>
+      <div class="t-line">не в чистой очереди: <b>${n(s.other)}</b> — перенос, будущие даты, без даты</div><div class="t-sep"></div>
+      <div class="t-line">создано сегодня на ${D.createdAsOf.slice(11,16)}: <b>${n(s.createdToday)}</b></div></div>`,
+    `<div class="tile"><div class="t-name">Чистая очередь</div><div class="t-big">${n(s.clean)}</div>
+      <div class="t-line">из общей очереди: <b>${n(s.total?s.clean/s.total*100:0)}%</b></div><div class="t-sep"></div>
+      <div class="t-line">больше всего: <b>${esc(s.fils.slice().sort((a,b)=>b.clean-a.clean)[0].fil)}</b></div></div>`,
+    `<div class="tile"><div class="t-name">Выполнено</div><div class="t-big">${n(s.doneYesterday)} <span class="small" style="display:inline">вчера, ${dLabel(M.days[M.T-1])}</span></div>
+      <div class="t-line">сегодня на ${ts}: <b>${n(s.doneToday)}</b></div>
+      <div class="t-line">с 1 ${mon}: <b>${n(s.doneMonth)}</b></div></div>`,
+    `<div class="tile"><div class="t-name">План FTTx на ${monN}</div><div class="t-big">${s.pct==null?'—':n(s.pct)+'%'} <span class="small" style="display:inline">${n(s.doneMonth)} из ${n(s.plan)}</span></div>
+      <div class="t-line">остаток плана: <b>${n(s.rest)}</b> · нужно в рабочий день: <b>${s.needDay==null?'—':n(Math.ceil(s.needDay))}</b></div>
+      <div class="t-line">осталось рабочих дней (6-дневка, включая сегодня): <b>${M.remW}</b></div><div class="t-sep"></div>
+      <div class="t-line">прогноз на конец месяца: ${chipPct(s.fcPct)} <b>${n(s.fc)}</b></div></div>`
+  ].join('');
+}
+
+function spark(v,M){
+  const a=v.slice(M.T-14,M.T), W=112,H=24, mx=Math.max(1,...a);
+  const bw=W/a.length;
+  return `<svg class="spark" width="${W}" height="${H}" aria-hidden="true">${a.map((x,i)=>{const h=Math.max(1,x/mx*(H-2));const sun=M.isSun[M.T-14+i];return `<rect x="${(i*bw+1).toFixed(1)}" y="${(H-h).toFixed(1)}" width="${(bw-2).toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="var(${sun?'--s1l':'--s1'})"/>`}).join('')}</svg>`;
+}
+function sorter(){ return S.sort==='name'?(a,b)=>(a.fil||a.rdt).localeCompare(b.fil||b.rdt,'ru'):S.sort==='pct'?(a,b)=>(a.pct??999)-(b.pct??999):(a,b)=>b.clean-a.clean; }
+function renderTable(M){
+  const maxT=Math.max(1,...M.fils.map(f=>f.total));
+  const qcell=o=>`<div class="qbar"><span><b>${n(o.clean)}</b></span><span class="bar" title="Чистая ${n(o.clean)} из ${n(o.total)}"><i style="width:${(o.clean/maxT*100).toFixed(1)}%"></i><i style="width:${(o.other/maxT*100).toFixed(1)}%"></i></span></div>`;
+  const qcellR=o=>`<b>${n(o.clean)}</b>`;
+  const row=(o,cls,name,isF)=>`<tr class="${cls}" ${cls==='reg'?`data-r="${esc(o.rdt)}"`:''}>
+    <td class="l sticky ${isF?'fil':''}">${name}</td>
+    <td class="sep">${n(o.total)}</td>
+    <td>${isF?qcell(o):qcellR(o)}</td>
+    <td>${n(o.createdToday)}</td>
+    <td class="sep">${n(o.doneToday)}</td><td>${n(o.doneYesterday)}</td><td>${n(o.doneMonth)}</td>
+    <td class="sep">${n(o.plan)}</td><td><b>${o.pct==null?'—':n(o.pct)+'%'}</b></td><td>${n(o.rest)}</td><td><b>${o.needDay==null?'—':n(Math.ceil(o.needDay))}</b></td><td>${chipPct(o.fcPct)}</td>
+    <td class="sep">${spark(o.v,M)}</td></tr>`;
+  let h=`<thead><tr><th class="l sticky" rowspan="2">Регион / ОДТ</th><th class="grp" colspan="3">Очередь</th><th class="grp" colspan="3">Выполнено</th><th class="grp" colspan="5">План на ${MONN[pd(M.days[M.T]).getUTCMonth()]}</th><th class="grp" rowspan="2">14 дней</th></tr>
+    <tr><th class="sep">Общая</th><th>Чистая</th><th>Создано сегодня</th><th class="sep">Сегодня</th><th>Вчера</th><th>С начала месяца</th><th class="sep">План</th><th>% вып.</th><th>Остаток</th><th>Нужно в день<span class="small">${M.remW} раб. дн.</span></th><th>Прогноз</th></tr></thead><tbody>`;
+  const srt=sorter();
+  const regs=fregs(M).sort(S.sort==='name'?(a,b)=>a.rdt.localeCompare(b.rdt,'ru'):srt);
+  regs.forEach(r=>{
+    const col=S.collapsed.has(r.rdt);
+    h+=row(r,'reg',`<span class="car">${col?'▶':'▼'}</span>${esc(r.rdt)} <span class="small" style="display:inline">· ${r.fils.length} ОДТ</span>`,false);
+    if(!col) r.fils.slice().sort(srt).forEach(f=>h+=row(f,'',esc(f.fil),true));
+  });
+  if(!regs.length) h+=`<tr><td class="l" colspan="14">Под выбранные фильтры не попала ни одна ОДТ.</td></tr>`;
+  else h+=row(M.sum(filt(M)),'total',anyF()?'Итого по фильтру':'Итого',false);
+  $('rcTable').innerHTML=h+'</tbody>';
+}
+
+function renderNotes(){
+  const D=S.D;
+  $('notes').innerHTML=[
+    `Источник: ${esc(D.source)}, лист «Аналитика». Данные перезагружены в Qlik ${D.asOf.replace('T',' ')}, последняя отметка о выполнении — ${D.lastEvent.replace('T',' ')}.`,
+    `Отбор как в листе Qlik: ${esc(D.filters)}. Разбивка по РДТ и филиалам — те же вычисляемые измерения, что в таблице «Заказы в разрезе регионов» (Павлодарский B2C отнесён к ВРДТ / Павлодарской ОДТ).`,
+    `<b>Общая очередь</b> — <code>Count(DISTINCT siebel_order_id)</code> по активным статусам.`,
+    `<b>Чистая очередь</b> — общая очередь минус перенос (требуется переназначение исполнителя по причине изменения даты явки), заказы с назначенной датой явки в будущем и заказы без даты назначения; формула та же, что в Qlik.`,
+    `<b>Выполнено</b> — заказы со статусом «Выполнено» по дате последнего изменения статуса (<code>last_state_ts</code>), с теми же фильтрами по виду работ, пулам и сегменту. «Сегодня» — неполный день.`,
+    `<b>Создано сегодня</b> — заказы с датой создания в WFM (<code>wfm_create_ts</code>) сегодня, в любом статусе, с теми же фильтрами; данные на ${D.createdAsOf.slice(11,16)}.`,
+    `<b>План</b> — ${esc(D.planSource)}. Области плана сведены к филиалам WFM: ${esc(D.planRemap)}. <b>% выполнения</b> = выполнено с начала месяца по WFM ÷ план. Для сравнения: факт продаж FTTx в самом отчёте по продажам — ${n(D.rows.reduce((a,r)=>a+r.salesFact,0))} (${n(D.rows.reduce((a,r)=>a+r.salesFact,0)/D.rows.reduce((a,r)=>a+r.plan,0)*100)}% плана); он считается по нарядам и не совпадает с WFM.`,
+    `<b>Остаток плана</b> = план − выполнено с начала месяца (не меньше нуля). <b>Нужно в день</b> = остаток ÷ оставшиеся рабочие дни месяца при 6-дневной неделе (пн–сб), включая сегодняшний.`,
+    `<b>Прогноз</b> = выполнено по вчерашний день + средний рабочий день × оставшиеся рабочие дни месяца (включая сегодня) + среднее последних двух воскресений × оставшиеся воскресенья. Цвет: зелёный — 100% и выше, жёлтый — 90–99%, красный — ниже 90%.`,
+    `<b>Средний рабочий день</b> (для прогноза и графика) — среднее выполненных за последние 6 полных дней, кроме воскресений.`,
+    `Выполнено с начала месяца взято из Qlik как уникальные заказы за месяц; сумма по дням может отличаться на 1–2 заказа, если статус одного заказа менялся в разные дни.`
+  ].map(x=>`<li>${x}</li>`).join('');
+}
+
+function renderCmp(M){
+  const s=scope(M), T=M.T, day=pd(M.days[T]), dd=day.getUTCDate()-1;   // полные дни текущего месяца
+  const D=S.D, fl=s.fils;
+  const dlt=(a,b)=>{if(!b)return'';const p=(a/b-1)*100;return `<span class="${p>=0?'up':'down'}">${p>=0?'+':''}${n1(p)}%</span>`;};
+  // по каждому месяцу: план, выполнено, то же число дней, средний рабочий день
+  const ms=D.months.map((m,k)=>{
+    const [y,mo]=m.key.split('-').map(Number); const cur=k===D.months.length-1;
+    const idx=M.days.map((x,i)=>i).filter(i=>M.days[i].startsWith(m.key));
+    const same=idx.filter(i=>pd(M.days[i]).getUTCDate()<=dd);
+    const wIdx=idx.filter(i=>!M.isSun[i]&&i!==T);
+    const st=list=>{const o={plan:0,done:0,same:0,w:0};list.forEach(f=>{o.plan+=m.plan[f.fil]||0;o.done+=m.done[f.fil]||0;o.same+=same.reduce((a,i)=>a+f.v[i],0);o.w+=wIdx.reduce((a,i)=>a+f.v[i],0);});
+      o.pct=o.plan?o.done/o.plan*100:null;o.avgW=wIdx.length?o.w/wIdx.length:0;return o;};
+    return {key:m.key,name:MONN[mo-1][0].toUpperCase()+MONN[mo-1].slice(1),cur,st,tot:st(fl)};
+  });
+  const last=ms.length-1;
+  $('cmp').innerHTML=ms.map((m,k)=>{const o=m.tot,p=k?ms[k-1].tot:null;
+    return `<div class="tile"><div class="t-name">${m.name}${m.cur?` <span class="small" style="display:inline">· идёт, данные на ${dLabel(M.days[T])}</span>`:''}</div>
+      <div class="t-big">${o.pct==null?'—':n(o.pct)+'%'} <span class="small" style="display:inline">плана</span></div>
+      <div class="t-line">выполнено <b>${n(o.done)}</b> из <b>${n(o.plan)}</b>${m.cur?` · прогноз ${chipPct(s.fcPct)}`:''}</div>
+      <div class="t-sep"></div>
+      <div class="t-line">за 1–${dd} число: <b>${n(o.same)}</b>${p?' · '+dlt(o.same,p.same)+' к '+MON[k===0?0:Number(ms[k-1].key.slice(5))-1].replace(/я$/,'ю').replace(/а$/,'у'):''}</div>
+      <div class="t-line">в среднем в рабочий день: <b>${n(o.avgW)}</b>${p?' · '+dlt(o.avgW,p.avgW):''}</div></div>`;}).join('');
+  // таблица по ОДТ
+  const head=`<thead><tr><th class="l sticky" rowspan="2">Регион / ОДТ</th>${ms.map(m=>`<th class="grp" colspan="3">${m.name}${m.cur?' (на '+M.days[T].slice(8,10)+'.'+M.days[T].slice(5,7)+')':''}</th>`).join('')}<th class="grp" colspan="${ms.length}">За 1–${dd} число</th></tr>
+    <tr>${ms.map(()=>`<th class="sep">План</th><th>Факт</th><th>%</th>`).join('')}${ms.map((m,k)=>`<th class="${k?'':'sep'}">${m.name.slice(0,3)}.</th>`).join('')}</tr></thead>`;
+  const pc=o=>o.pct==null?'—':`<span class="chip b-${bandP(o.pct)}">${n(o.pct)}%</span>`;
+  const row=(list,cls,name)=>{const st=ms.map(m=>m.st(list));
+    return `<tr class="${cls}"><td class="l sticky ${cls?'':'fil'}">${name}</td>${st.map((o,k)=>`<td class="sep">${n(o.plan)}</td><td>${n(o.done)}</td><td>${ms[k].cur?`<b>${o.pct==null?'—':n(o.pct)+'%'}</b>`:pc(o)}</td>`).join('')}${st.map((o,k)=>`<td class="${k?'':'sep'}">${n(o.same)}${k?`<span class="small">${dlt(o.same,st[k-1].same)}</span>`:''}</td>`).join('')}</tr>`;};
+  let h=head+'<tbody>';
+  fregs(M).sort((a,b)=>a.rdt.localeCompare(b.rdt,'ru')).forEach(r=>{ h+=row(r.fils,'reg',esc(r.rdt)); r.fils.slice().sort((a,b)=>a.fil.localeCompare(b.fil,'ru')).forEach(f=>h+=row([f],'',esc(f.fil))); });
+  if(fl.length) h+=row(fl,'total',anyF()?'Итого по фильтру':'Итого');
+  $('cmpTable').innerHTML=h+'</tbody>';
+  $('cmpNote').textContent=`План — FTTx из отчёта по продажам, факт — заказы WFM со статусом «Выполнено» за месяц. «За 1–${dd} число» сравнивает одинаковое количество дней каждого месяца; под числом — изменение к предыдущему месяцу. % текущего месяца — к полному плану, месяц ещё идёт.`;
+  $('dynTitle').textContent='Выполнено установок по дням · '+s.name;
+  $('dynNote').textContent=`${dLabel(M.days[0])} — ${dLabel(M.days[T])}. Наведите на столбец, чтобы увидеть число.`;
+}
+
+function drawChart(){
+  const M=S.M; if(!M||S.view!=='dinamika') return;
+  const svg=$('dynSvg'), W=svg.clientWidth, H=svg.clientHeight; if(!W) return;
+  const s=scope(M), v=s.v, N=v.length, narrow=W<520;
+  const L=narrow?30:44, R=8, Tp=14, B=34, iw=W-L-R, ih=H-Tp-B;
+  const mx=Math.max(...v)*1.08||1, step=mx>400?100:mx>200?50:mx>80?20:mx>40?10:5;
+  const y=x=>Tp+ih-x/mx*ih, bw=iw/N;
+  let g='';
+  for(let t=0;t<=mx;t+=step) g+=`<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${L-6}" y="${y(t)+4}" font-size="11" text-anchor="end" fill="var(--muted)">${nf.format(t)}</text>`;
+  v.forEach((x,i)=>{const today=i===M.T, h=Math.max(0,ih-(y(x)-Tp));
+    g+=`<rect data-i="${i}" x="${(L+i*bw+1).toFixed(1)}" y="${y(x).toFixed(1)}" width="${Math.max(1,bw-2).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${today?'var(--na-bg)':M.isSun[i]?'var(--s1l)':'var(--s1)'}" ${today?'stroke="var(--axis)" stroke-dasharray="3 2"':''}/>`;
+    const d=pd(M.days[i]);
+    if(d.getUTCDate()===1) g+=`<line x1="${L+i*bw}" x2="${L+i*bw}" y1="${Tp}" y2="${Tp+ih}" stroke="var(--axis)" stroke-dasharray="2 3"/><text x="${L+i*bw+4}" y="${Tp+10}" font-size="11.5" font-weight="600" fill="var(--ink2)">${MONN[d.getUTCMonth()]}</text>`;
+    const every=narrow?14:7;
+    if((N-1-i)%every===0) g+=`<text x="${L+i*bw+bw/2}" y="${H-B+16}" font-size="11" text-anchor="middle" fill="var(--muted)">${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,'0')}</text>`;
+  });
+  // скользящее среднее за 6 рабочих дней
+  const pts=[]; for(let i=0;i<M.T;i++){ if(M.isSun[i]) continue; const w=[];for(let j=i;j>=0&&w.length<6;j--) if(!M.isSun[j]) w.push(v[j]); if(w.length===6) pts.push([L+i*bw+bw/2,y(w.reduce((a,b)=>a+b,0)/6)]); }
+  if(pts.length) g+=`<polyline points="${pts.map(p=>p.map(c=>c.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="var(--s2)" stroke-width="2.5" stroke-linejoin="round"/>`;
+  g+=`<line x1="${L}" x2="${W-R}" y1="${Tp+ih}" y2="${Tp+ih}" stroke="var(--axis)"/>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=g;
+}
+const ro=new ResizeObserver(drawChart); ro.observe($('fig'));
+$('dynSvg').addEventListener('mousemove',e=>{const i=e.target.dataset&&e.target.dataset.i;const tip=$('tip');if(i==null){tip.style.display='none';return;}
+  const M=S.M,s=scope(M),d=M.days[+i];tip.innerHTML=`<b>${dLabel(d)}, ${WD[pd(d).getUTCDay()]}</b><br>Выполнено: ${n(s.v[+i])}${+i===M.T?' (день не закончился)':''}`;
+  tip.style.display='block';tip.style.left=Math.min(e.clientX+12,innerWidth-200)+'px';tip.style.top=(e.clientY+12)+'px';});
+$('dynSvg').addEventListener('mouseleave',()=>$('tip').style.display='none');
+
+function renderDynTable(M){
+  const cm=pd(M.days[M.T]).getUTCMonth(); const idx=M.days.map((x,i)=>i).filter(i=>pd(M.days[i]).getUTCMonth()===cm);
+  $('dtTitle').textContent=`${MONN[cm][0].toUpperCase()+MONN[cm].slice(1)} по дням, по ОДТ`;
+  const mt=o=>o.doneMonth;  // как в сводке: уникальные заказы за месяц из Qlik
+  const cell=(o,i)=>{const x=o.v[i];let c='';if(i!==M.T&&!M.isSun[i]&&o.avg>=3){c=x>=o.avg*1.3?'b-high':x<=o.avg*0.7?'b-low':'';}return `<td class="hm ${c}">${n(x)}</td>`;};
+  let h=`<thead><tr><th class="l sticky">Регион / ОДТ</th>${idx.map(i=>{const d=pd(M.days[i]);return `<th style="${M.isSun[i]?'color:var(--muted)':''}">${d.getUTCDate()}.${String(d.getUTCMonth()+1).padStart(2,'0')}<span class="small">${i===M.T?'сегодня':WD[d.getUTCDay()]}</span></th>`;}).join('')}<th class="sep mt">Итого за месяц</th><th>Ср. раб. день</th></tr></thead><tbody>`;
+  fregs(M).sort((a,b)=>a.rdt.localeCompare(b.rdt,'ru')).forEach(r=>{
+    h+=`<tr class="reg"><td class="l sticky">${esc(r.rdt)}</td>${idx.map(i=>`<td>${n(r.v[i])}</td>`).join('')}<td class="sep mt">${n(mt(r))}</td><td>${n(r.avg)}</td></tr>`;
+    r.fils.slice().sort((a,b)=>a.fil.localeCompare(b.fil,'ru')).forEach(f=>h+=`<tr><td class="l sticky fil">${esc(f.fil)}</td>${idx.map(i=>cell(f,i)).join('')}<td class="sep mt">${n(mt(f))}</td><td>${n(f.avg)}</td></tr>`);
+  });
+  {const t=M.sum(filt(M));h+=`<tr class="total"><td class="l sticky">${anyF()?'Итого по фильтру':'Итого'}</td>${idx.map(i=>`<td>${n(t.v[i])}</td>`).join('')}<td class="sep mt">${n(mt(t))}</td><td>${n(t.avg)}</td></tr>`;}
+  $('dynTable').innerHTML=h+'</tbody>';
+}
+
+function render(){
+  const M=S.M;
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.view));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+S.view));
+  renderFilters();
+  renderTiles(M); renderTable(M); renderCmp(M); renderDynTable(M); requestAnimationFrame(drawChart);
+}
+
+function setView(v){ S.view=v==='dinamika'?'dinamika':'svodka'; try{ history.replaceState(null,'','#'+S.view);}catch(e){} render(); }
+$('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b) setView(b.dataset.v);});
+addEventListener('hashchange',()=>setView(location.hash.slice(1)));
+// ---- фильтры
+const MS={msReg:'reg',msFil:'fil'};
+function optsFor(key){ const M=S.M;
+  if(key==='reg') return M.regs.map(r=>r.rdt).sort().map(r=>({v:r,t:r,c:M.fils.filter(f=>f.rdt===r).length}));
+  if(key==='fil') return M.regs.slice().sort((a,b)=>a.rdt.localeCompare(b.rdt)).filter(r=>!S.f.reg.size||S.f.reg.has(r.rdt)).flatMap(r=>[{g:r.rdt},...r.fils.slice().sort((a,b)=>a.fil.localeCompare(b.fil,'ru')).map(f=>({v:f.fil,t:f.fil}))]);
+  return FC.map(x=>({v:x.k,t:x.t,c:M.fils.filter(f=>bandP(f.fcPct)===x.k).length})); }
+const LBL={reg:'Регион',fil:'ОДТ'};
+function renderFilters(){
+  for(const id in MS){ const key=MS[id], el=$(id), set=S.f[key];
+    const o=optsFor(key).filter(x=>!x.g); const names=o.filter(x=>set.has(x.v)).map(x=>x.t.split(' (')[0]);
+    el.querySelector('.ms-btn').innerHTML=`<span class="ms-txt">${LBL[key]}: ${set.size?esc(names.length>2?names.length+' выбрано':names.join(', ')):'все'}</span><span class="ms-car">▾</span>`;
+    el.classList.toggle('on',set.size>0);
+    if(!el.classList.contains('open')) el.querySelector('.ms-pop').innerHTML=`<div class="ms-quick"><button type="button" data-q="all">Все</button><button type="button" data-q="close">Готово</button></div>`+
+      optsFor(key).map(x=>x.g?`<div class="ms-grp">${esc(x.g)}</div>`:`<label class="ms-opt"><input type="checkbox" value="${esc(x.v)}" ${set.has(x.v)?'checked':''}><span>${esc(x.t)}</span>${x.c!=null?`<span class="cnt">${x.c}</span>`:''}</label>`).join('');
+  }
+  $('btnReset').style.display=anyF()?'':'none';
+  $('fsum').innerHTML=anyF()?`показано ОДТ: <b>${filt(S.M).length}</b> из ${S.M.fils.length}`:`все регионы и ОДТ (${S.M.fils.length})`;
+}
+function saveF(){ try{ localStorage.setItem('fttx_f',JSON.stringify({reg:[...S.f.reg],fil:[...S.f.fil],fc:[...S.f.fc]})); }catch(e){} }
+function closeAll(except){ document.querySelectorAll('.ms.open').forEach(m=>{ if(m!==except){ m.classList.remove('open'); } }); }
+for(const id in MS){ const el=$(id), key=MS[id];
+  el.querySelector('.ms-btn').addEventListener('click',e=>{ e.stopPropagation(); const op=!el.classList.contains('open'); closeAll(); if(op){ renderFilters(); el.classList.add('open'); } });
+  el.querySelector('.ms-pop').addEventListener('click',e=>e.stopPropagation());
+  el.querySelector('.ms-pop').addEventListener('change',e=>{ const v=e.target.value; e.target.checked?S.f[key].add(v):S.f[key].delete(v);
+    if(key==='reg'&&S.f.reg.size){ [...S.f.fil].forEach(f=>{ const x=S.M.fils.find(y=>y.fil===f); if(x&&!S.f.reg.has(x.rdt)) S.f.fil.delete(f); }); }
+    saveF(); render(); });
+  el.querySelector('.ms-pop').addEventListener('click',e=>{ const q=e.target.closest('[data-q]'); if(!q) return;
+    if(q.dataset.q==='all'){ S.f[key].clear(); saveF(); el.classList.remove('open'); render(); }
+    else { el.classList.remove('open'); renderFilters(); } });
+}
+document.addEventListener('click',()=>{ if(document.querySelector('.ms.open')){ closeAll(); renderFilters(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeAll(); renderFilters(); } });
+$('btnReset').addEventListener('click',()=>{ S.f.reg.clear(); S.f.fil.clear(); S.f.fc.clear(); saveF(); render(); });
+$('rcTable').addEventListener('click',e=>{const tr=e.target.closest('tr.reg');if(!tr)return;const r=tr.dataset.r;S.collapsed.has(r)?S.collapsed.delete(r):S.collapsed.add(r);renderTable(S.M);});
+$('btnFull').addEventListener('click',()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>toast('Полноэкранный режим недоступен'));}catch(e){toast('Полноэкранный режим недоступен');}});
+
+function loadXLSX(){ return new Promise((res,rej)=>{ if(window.XLSX) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload=()=>res(); s.onerror=()=>rej(new Error('Не удалось загрузить модуль Excel')); document.head.appendChild(s); }); }
+$('btnExport').addEventListener('click',async()=>{
+  try{
+    await loadXLSX(); const M=S.M;
+    const head=['РДТ','ОДТ','Общая очередь','Чистая очередь','Создано сегодня','Выполнено сегодня','Выполнено вчера','Выполнено с начала месяца','План FTTx','% выполнения','Остаток плана',`Нужно в день (${M.remW} раб. дн.)`,'Прогноз на месяц','Прогноз, %'];
+    const line=(r,f,o)=>[r,f,o.total,o.clean,o.createdToday,o.doneToday,o.doneYesterday,o.doneMonth,o.plan,o.pct==null?null:+o.pct.toFixed(1),o.rest,o.needDay==null?null:Math.ceil(o.needDay),Math.round(o.fc),o.fcPct==null?null:+o.fcPct.toFixed(1)];
+    const aoa=[head];
+    fregs(M).sort((a,b)=>a.rdt.localeCompare(b.rdt,'ru')).forEach(r=>{aoa.push(line(r.rdt,'Итого по РДТ',r));r.fils.slice().sort((a,b)=>a.fil.localeCompare(b.fil,'ru')).forEach(f=>aoa.push(line(r.rdt,f.fil,f)));});
+    aoa.push(line(anyF()?'Итого по фильтру':'Итого','',M.sum(filt(M))));
+    const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=head.map((h,i)=>({wch:i<2?28:14}));
+    const dh=['РДТ','ОДТ',...M.days]; const da=[dh]; filt(M).forEach(f=>da.push([f.rdt,f.fil,...f.v]));
+    const ws2=XLSX.utils.aoa_to_sheet(da);
+    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Сводка'); XLSX.utils.book_append_sheet(wb,ws2,'Выполнено по дням');
+    const name=`FTTx_установки_${S.D.asOf.slice(0,10)}${S.f.reg.size===1?'_'+[...S.f.reg][0]:''}.xlsx`;
+    const buf=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    let dl=null; try{ dl=await (window.claude&&window.claude.use?window.claude.use('downloads'):null); }catch(e){ dl=null; }
+    if(dl){ await dl.save({filename:name,data:new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}); toast('Файл сохранён'); }
+    else { const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf])); a.download=name; a.click(); }
+  }catch(e){ toast(e&&e.message?e.message:'Не удалось сохранить файл'); }
+});
+
+(async()=>{
+  try{
+    const D=await (await fetch('data.json',{cache:'no-store'})).json();
+    S.D=D; S.M=model(D);
+    $('subtitle').textContent=`Qlik WFM ДИР · данные на ${dLabel(D.asOf.slice(0,10))} ${D.asOf.slice(11,16)} · B2C, монтаж линий FTTH / ETTH`;
+    try{ const o=JSON.parse(localStorage.getItem('fttx_f')||'{}'); ['reg','fil'].forEach(k=>(o[k]||[]).forEach(v=>S.f[k].add(v))); }catch(e){}
+    renderNotes();
+    S.view=location.hash.slice(1)==='dinamika'?'dinamika':'svodka';
+    render();
+  }catch(e){ document.querySelector('main').innerHTML='<div class="err">Не удалось загрузить данные: '+esc(e.message||e)+'</div>'; }
+})();
+}
+</script>
+</body>
+</html>
