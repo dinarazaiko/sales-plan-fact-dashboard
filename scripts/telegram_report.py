@@ -3,7 +3,7 @@
 
 Берёт тот же data.json, что и сайт, считает по тем же правилам и отправляет в Telegram
 несколько сообщений + Excel-файл:
-  1. Выполнение: план / факт / % по всем показателям — по регионам (РДТ) и ДРБ (СОВО, Online Sales).
+  1. Выполнение: план / факт / % по всем показателям — по регионам (РДТ) и ДРБ (одной строкой).
   2. ШПД ниже графика: сколько сотрудников не дотягивают до плана на сегодня
      (с учётом опоздания данных в Qlik на LAG_DAYS дня и допуска TOLERANCE), по регионам и каналам,
      с разбивкой по % выполнения плана: 0%, 1–20%, 21–40%, 41–60%, 61–80%, больше 80%.
@@ -147,7 +147,6 @@ def groups(emps):
     drb = [e for e in emps if e["reg"] == DRB]
     if drb:
         out.append(("ДРБ", drb))
-        out += [(" " + c, [e for e in drb if e["chan"] == c]) for c in chans(drb)]
     out.append(("Всего", emps))
     return out
 
@@ -227,8 +226,11 @@ def message_shpd(M):
         R = [r for r in rows_all if r["e"]["reg"] == reg]
         if not R:
             continue
-        lines = [hdr] + [line(" " + c, [r for r in R if r["e"]["chan"] == c]) for c in chans([r["e"] for r in R])]
-        lines.append(line("Итого", R))
+        if reg == DRB:
+            lines = [hdr, line("Итого", R)]                       # ДРБ — одной строкой, без каналов
+        else:
+            lines = [hdr] + [line(" " + c, [r for r in R if r["e"]["chan"] == c]) for c in chans([r["e"] for r in R])]
+            lines.append(line("Итого", R))
         blocks.append(f"\n<b>{html.escape(reg)}</b>\n<pre>" + html.escape("\n".join(lines)) + "</pre>")
     reg_rows = [r for r in rows_all if r["e"]["reg"] != DRB]
     lines = [hdr, line("Регионы", reg_rows), line("Всего", rows_all)]
@@ -255,8 +257,9 @@ def message(M):
                 rows += [line("Итого рег.", reg_list), ""]
             LR = [e for e in emps if e["reg"] == r]
             rows.append(line(r, LR))
-            for c in chans(LR):
-                rows.append(line(" " + c, [e for e in LR if e["chan"] == c]))
+            if r != DRB:
+                for c in chans(LR):
+                    rows.append(line(" " + c, [e for e in LR if e["chan"] == c]))
         if not any(e["reg"] == DRB for e in emps):
             rows.append(line("Итого рег.", reg_list))
         rows.append(line("Всего", emps))
@@ -294,8 +297,9 @@ def build_xlsx(M, path):
     for reg in regions(emps):
         LR = [e for e in emps if e["reg"] == reg]
         put(reg + (" (не регион)" if reg == DRB else ""), "", LR)
-        for c in chans(LR):
-            put(reg, c, [e for e in LR if e["chan"] == c])
+        if reg != DRB:
+            for c in chans(LR):
+                put(reg, c, [e for e in LR if e["chan"] == c])
     put("Итого по регионам", "", [e for e in emps if e["reg"] != DRB], True)
     put("Всего с ДРБ", "", emps, True)
     ws.column_dimensions["A"].width = 22; ws.column_dimensions["B"].width = 14
