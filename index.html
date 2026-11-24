@@ -192,6 +192,7 @@ td.fc{font-weight:700}
 .cmf.big .cmsaved{text-align:right}
 .cmf.dirty .cmi{border-color:var(--accent)}
 textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
+@supports (field-sizing:content){ textarea.cmi{field-sizing:content;min-height:2.2em;max-height:140px;overflow-y:auto} .cmf.big textarea.cmi{field-sizing:fixed} }
 .cmf.big textarea.cmi{resize:vertical;overflow:auto}
 .cm-hist li.now{border-color:var(--axis)}
 .cmf.big{flex-direction:column}.cmf.big .cmi{font-size:14.5px;min-height:70px;resize:vertical}.cmf.big .cmok{align-self:flex-end;padding:7px 16px;font-size:14px}
@@ -343,7 +344,8 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
         <div class="legend" id="legendDyn"></div>
       </div>
       <div id="dynChart"></div>
-      <div class="tbl-wrap" style="margin-top:12px"><table id="dynTable"></table></div>
+      <div class="controls" style="margin-top:12px"><div class="seg" id="dynRange"><button data-r="3">Последние 3 рабочих дня</button><button data-r="all">Весь месяц</button></div></div>
+      <div class="tbl-wrap" style="margin-top:8px"><table id="dynTable"></table></div>
     </div>
   </section>
 </main>
@@ -711,7 +713,11 @@ function cmMeta(e){ const w=cmWho(e); return [cmWhen(e),w].filter(Boolean).map(e
 // поле сразу заполнено текущим комментарием; правка + OK = новая версия, прежняя уходит в историю
 function cmForm(L,big){ const v=getCm(L); const ro=S.canWrite===false;
   return `<div class="cmf${big?' big':''}${ro?' ro':''}" data-l="${esc(L)}"><textarea rows="${big?3:1}" class="cmi" placeholder="${ro?'только просмотр':'Комментарий…'}" aria-label="Комментарий"${ro?' readonly':''}>${esc(v)}</textarea>${ro?'':`<button type="button" class="cmok">${big?'Сохранить':'OK'}</button>`}<span class="cmsaved" aria-live="polite"></span></div>`; }
-function fitCm(t){ if(t.closest('.big')) return; t.style.height='auto'; t.style.height=Math.min(t.scrollHeight+2,140)+'px'; }
+const FIELD_SIZING=typeof CSS!=='undefined'&&CSS.supports&&CSS.supports('field-sizing','content');
+function fitCm(t){ if(FIELD_SIZING||t.closest('.big')) return; t.style.height='auto'; t.style.height=Math.min(t.scrollHeight+2,140)+'px'; }
+// все поля сразу: сначала записи, потом одно чтение, потом записи — раскладка считается один раз, а не по разу на каждую строку
+function fitAll(list){ if(FIELD_SIZING) return; const ts=[...list].filter(t=>t.value&&!t.closest('.big')); ts.forEach(t=>{ t.style.height='auto'; });
+  const hs=ts.map(t=>t.scrollHeight); ts.forEach((t,k)=>{ t.style.height=Math.min(hs[k]+2,140)+'px'; }); }
 function markDirty(t){ const f=t.closest('.cmf'); f.classList.toggle('dirty',t.value.trim()!==getCm(f.dataset.l).trim()); }
 function refreshCm(L){ document.querySelectorAll(`.cmf[data-l="${CSS.escape(L)}"]`).forEach(f=>{ const t=f.querySelector('.cmi');
     if(document.activeElement!==t&&!f.classList.contains('dirty')){ t.value=getCm(L); fitCm(t); } markDirty(t); });
@@ -956,7 +962,7 @@ function renderEmps(){
       IS.map(i=>{ const x=e.ind[i]; const dyn=DS[i].length?DS[i].map((d,j)=>dynCell(e,i,d,j===DS[i].length-1)).join(''):`<td>${fmt(x.fact)}</td>`;
         return x.plan>0?`<td class="sep">${fmt(x.plan)}</td>${dyn}<td>${pcCell(x.pc)}${fcChip(x.fc3)}<span class="small">3 мес ${pct(x.avg)}</span></td>`
         :`<td class="sep muted">нет плана</td>${dyn}<td class="muted">—</td>`; }).join('')+
-      `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; }).join('');
+      `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; });
   // строка «Итого» по отобранным сотрудникам
   const filt=[S.regs.size?[...S.regs].map(r=>r===DRB?'ДРБ':r).join(', '):'регионы + ДРБ',S.chans.size?[...S.chans].join(', '):'все каналы'].concat(S.fils.size?[[...S.fils].join(', ')]:[]).concat(S.nps.size?[[...S.nps].join(', ')]:[]).concat(S.q?[`поиск «${S.q}»`]:[])
     .concat([...S.shows].map(k=>SHOW_OPTS.find(o=>o.v===k).t.toLowerCase()+(['lag','low3','nodyn'].includes(k)&&S.inds.size?` (${[...S.inds].map(i=>IND[i].short).join(', ')})`:'')))
@@ -970,9 +976,15 @@ function renderEmps(){
     IS.map(i=>{ const a=agg(L,i); const dyn=DS[i].length?DS[i].map((d,j)=>totDyn(i,d,j===DS[i].length-1)).join(''):`<td><b>${fmt(a.fact)}</b></td>`;
       return `<td class="sep"><b>${fmt(a.plan)}</b></td>${dyn}<td>${pcCell(a.pc)}${fcChip(a.fc3)}<span class="small">3 мес ${pct(a.avg)}</span></td>`; }).join('')+
     `<td class="cmc sep l"><span class="small">с комментариями: ${L.filter(e=>hasCm(e.L)).length}</span></td></tr>`:'';
-  $('empTable').innerHTML=hd+'<tbody>'+tot+rows+'</tbody>';
+  // сначала первые строки — таблица появляется сразу, остальные дорисовываются частями, не подвешивая страницу
+  const FIRST=60, STEP=120, tok=S._empTok=(S._empTok||0)+1;
+  $('empTable').innerHTML=hd+'<tbody>'+tot+rows.slice(0,FIRST).join('')+'</tbody>';
   requestAnimationFrame(()=>{ const th=$('empTable').querySelector('thead'); const h=th?th.offsetHeight:0; $('empTable').querySelectorAll('tr.tot td').forEach(td=>{ td.style.top=h+'px'; }); });
-  requestAnimationFrame(()=>document.querySelectorAll('#empTable textarea.cmi').forEach(t=>{ if(t.value) fitCm(t); }));
+  requestAnimationFrame(()=>fitAll(document.querySelectorAll('#empTable textarea.cmi')));
+  let at=FIRST; const more=()=>{ if(tok!==S._empTok||at>=rows.length) return; const tb=$('empTable').tBodies[0]; if(!tb) return;
+    const n0=tb.rows.length; tb.insertAdjacentHTML('beforeend',rows.slice(at,at+STEP).join('')); at+=STEP;
+    fitAll([...tb.rows].slice(n0).map(r=>r.querySelector('textarea.cmi')).filter(Boolean)); setTimeout(more,0); };
+  setTimeout(more,0);
   cmStatus();
 }
 
@@ -1021,7 +1033,9 @@ function renderDyn(){
     return {i,pts,proj:agg(list,i).fc3}; });
   $('dynChart').innerHTML=lineChart(ser);
   let t=`<thead><tr><th class="l">Выгрузка</th>`+IND.map(ind=>`<th class="grp" colspan="3">${ind.name}</th>`).join('')+`</tr><tr><th class="l"></th>`+IND.map(()=>`<th class="sep">Факт</th><th>%</th><th>Прирост</th>`).join('')+`</tr></thead><tbody>`;
-  const dates=[...new Set(ser.flatMap(s=>s.pts.map(p=>p.date)))].sort();
+  let dates=[...new Set(ser.flatMap(s=>s.pts.map(p=>p.date)))].sort();
+  document.querySelectorAll('#dynRange button').forEach(b=>b.classList.toggle('on',b.dataset.r===(S.dynAll?'all':'3')));
+  if(!S.dynAll){ const w=lastWorkdays(3); dates=dates.filter(d=>w.includes(d)); }
   for(const d of dates){ t+=`<tr><td class="l">${dFmt(d)}${d===m.date?' <span class="muted">(текущая)</span>':''}</td>`;
     t+=ser.map(s=>{ const k=s.pts.findIndex(p=>p.date===d); if(k<0) return `<td class="sep muted">—</td><td class="muted">—</td><td class="muted">—</td>`;
       const p=s.pts[k]; let inc='—'; if(k>0){ const prev=snaps.find(x=>x.date===s.pts[k-1].date), now=snaps.find(x=>x.date===d); let v=0;
@@ -1072,10 +1086,13 @@ function cnts(list,key){ const c=new Map(); list.forEach(e=>{ const v=e[key]; if
   return [...c.entries()].sort((a,b)=>a[0].localeCompare(b[0],'ru')).map(([v,n])=>({v,t:`${v} (${n})`,s:v})); }
 const SHOW_OPTS=[{v:'lag',t:'Прогноз ниже 80%'},{v:'low3',t:'Ниже 80% в среднем за 3 мес.'},{v:'nodyn',t:'Нет динамики (факт не вырос за последние 3 рабочих дня)'},{v:'cm',t:'С комментарием'},{v:'nocm',t:'Без комментария'}];
 const MSDEF={
-  mon:{el:'msMon',all:'Месяц: текущий',label:'Месяцы',search:true,note:'Можно отметить несколько месяцев — план и факт сложатся.',
+  mon:{el:'msMon',get all(){ return S.per&&S.per.kind==='range'?'Месяц: выбраны даты':'Месяц'; },label:'Месяцы',search:true,allBtn:'Текущий месяц',note:'Отметьте месяц. Несколько отмеченных месяцев — план и факт сложатся.',
+    isDef:()=>!S.per||S.per.kind==='cur',
     opts:()=>{ const f=S.full||S.model; return monthsAvail(f).slice().reverse().map(p=>({v:p,t:`${p} · ${pName(p)}${p===f.cur?` (на ${dShort(f.date)})`:''}`,s:pTitle(p)})); },
-    get:()=>S.per&&S.per.kind==='months'?new Set(S.per.ps):new Set(),
-    set:v=>{ const ps=[...v].map(Number).sort((a,b)=>a-b); S.per=ps.length?{kind:'months',ps}:{kind:'cur'}; },
+    get:()=>{ const f=S.full||S.model; return S.per&&S.per.kind==='months'?new Set(S.per.ps):(!S.per||S.per.kind==='cur')?new Set([f.cur]):new Set(); },
+    set:v=>{ const f=S.full||S.model; let ps=[...v].map(Number).sort((a,b)=>a-b);
+      if((!S.per||S.per.kind==='cur')&&ps.length>1) ps=ps.filter(p=>p!==f.cur);      // из текущего месяца щелчок по другому — выбрать только его
+      S.per=!ps.length||(ps.length===1&&ps[0]===f.cur)?{kind:'cur'}:{kind:'months',ps}; },
     after:()=>{ renderAll(); }},
   reg:{el:'msReg',all:'Регионы + ДРБ',label:'Регионы',opts:()=>sortedRegions().map(r=>({v:r,t:r===DRB?'ДРБ (СОВО, Online Sales)':r})),get:()=>S.regs,set:v=>{S.regs=v;},
     quick:[{t:'Только регионы',f:()=>new Set(sortedRegions().filter(r=>r!==DRB))}],after:()=>{ renderView(); }},
@@ -1090,12 +1107,12 @@ const MSDEF={
 function msRender(key){ const d=MSDEF[key], root=$(d.el); if(!root) return; const sel=d.get(); const opts=d.opts(); const ch=opts.filter(o=>sel.has(o.v));
   const short=o=>o.s||o.t; const onlyR=key==='reg'&&ch.length&&!sel.has(DRB)&&ch.length===opts.filter(o=>o.v!==DRB).length;
   const txt=onlyR?'Только регионы':!ch.length?d.all:ch.length===1?short(ch[0]):ch.length===2?ch.map(short).join(', '):`${d.label}: ${ch.length} выбрано`;
-  root.querySelector('.ms-btn').innerHTML=`<span class="ms-txt">${esc(txt)}</span><span class="ms-car">▾</span>`; root.classList.toggle('on',ch.length>0);
+  root.querySelector('.ms-btn').innerHTML=`<span class="ms-txt">${esc(txt)}</span><span class="ms-car">▾</span>`; root.classList.toggle('on',ch.length>0&&!(d.isDef&&d.isDef()));
   if(root.classList.contains('open')) msPanel(key); }
 function msPanel(key){ const d=MSDEF[key], root=$(d.el); const sel=d.get(); const opts=d.opts(); root._opts=opts;
   const q=(root._q||'').toLowerCase();
   root.querySelector('.ms-pop').innerHTML=(d.search?`<input type="search" class="ms-search" placeholder="Найти…" value="${esc(root._q||'')}">`:'')+(d.note?`<div class="ms-note">${esc(d.note)}</div>`:'')+
-    `<div class="ms-quick"><button type="button" data-q="all">Все</button>${(d.quick||[]).map((q,k)=>`<button type="button" data-q="${k}">${esc(q.t)}</button>`).join('')}</div>`+
+    `<div class="ms-quick"><button type="button" data-q="all">${esc(d.allBtn||'Все')}</button>${(d.quick||[]).map((q,k)=>`<button type="button" data-q="${k}">${esc(q.t)}</button>`).join('')}</div>`+
     opts.map((o,k)=>`<label class="ms-opt"${q&&!String(o.t).toLowerCase().includes(q)?' hidden':''}><input type="checkbox" data-k="${k}" ${sel.has(o.v)?'checked':''}><span>${esc(o.t)}</span></label>`).join('')+
     `<div class="ms-foot"><button type="button" class="primary" data-q="close">Готово</button></div>`; }
 function msCloseAll(except){ document.querySelectorAll('.ms.open').forEach(r=>{ if(r!==except) r.classList.remove('open'); }); }
@@ -1138,6 +1155,7 @@ $('myName').addEventListener('input',e=>{ setMyName(e.target.value); e.target.cl
 $('focusSeg').addEventListener('click',e=>{const b=e.target.closest('button[data-f]'); if(!b) return;
   if(b.dataset.f==='') S.focus=new Set(); else { const i=+b.dataset.f; const n=new Set(S.focus); n.has(i)?n.delete(i):n.add(i); if(n.size===IND.length) n.clear(); S.focus=n; }
   renderFilters(); renderEmps();});
+$('dynRange').addEventListener('click',e=>{const b=e.target.closest('button[data-r]'); if(!b) return; S.dynAll=b.dataset.r==='all'; renderView();});
 $('distBy').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; S.distBy=b.dataset.by; renderDist();});
 $('dist').addEventListener('click',e=>{const s=e.target.closest('.dseg'); if(!s) return;
   if(!oneReg()) S.regs=new Set([s.dataset.k]); else S.chans=new Set([s.dataset.k]);
@@ -1329,7 +1347,7 @@ async function checkNewData(){
 /* ---------------- boot ---------------- */
 (async function(){
   try{
-    const res=await fetch('data.json?v='+Date.now(),{cache:'no-store'});   // без кэша: GitHub Pages держит старый файл до 10 мин
+    const res=await fetch('data.json',{cache:'no-cache'});   // браузер сверяет файл с сервером: не изменился — берёт из кэша
     const txt=await res.text(); const base=JSON.parse(txt); S.dataSig=dataSig(base,txt);
     const lm=res.headers.get('Last-Modified'); S.upd={at:lm?new Date(lm):null,how:null};
     loadPublishInfo();
@@ -1342,7 +1360,7 @@ async function checkNewData(){
     renderHeader(); renderFilters(); setView(location.hash.slice(1));
   }catch(err){ $('subtitle').textContent='Не удалось загрузить данные: '+err.message; return; }
   await loadFromDb();
-  if(!S.db) setInterval(checkNewData,3*60*1000);          // сайт на GitHub: раз в 3 мин проверяем, не выложил ли бот новую выгрузку
+  if(!S.db){ setTimeout(checkNewData,20*1000); setInterval(checkNewData,3*60*1000); }          // сайт на GitHub: раз в 3 мин проверяем, не выложил ли бот новую выгрузку
 })();
 </script>
 </body>
