@@ -140,6 +140,37 @@ td.fc{font-weight:700}
 .ms-opt[hidden]{display:none}
 #empTable td.wrapc{white-space:normal;min-width:110px;max-width:170px;font-size:13px}
 .topbar .ms-btn{min-width:150px}
+.per-btn{display:inline-flex;align-items:center;gap:8px;min-width:190px;max-width:320px;justify-content:space-between;text-align:left;padding:7px 10px;background:var(--card)}
+.ms.on .per-btn{border-color:var(--accent);font-weight:600;box-shadow:0 0 0 2px var(--row-hover)}
+.ms-pop.per-pop{min-width:0;max-width:calc(100vw - 24px);width:max-content;max-height:calc(100vh - 150px);overflow:auto;padding:12px}
+.cal-wrap{display:flex;gap:12px}
+.cal-main{position:relative}
+.cal-in{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.cal-in label{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:7px;padding:4px 8px;background:var(--surface)}
+.cal-in input{border:0;outline:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;width:105px}
+.cal-in label:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--row-hover)}
+.cal-nav{position:absolute;left:0;right:0;top:46px;display:flex;justify-content:space-between;pointer-events:none}
+.cal-nav button{pointer-events:auto;padding:1px 9px;font-size:16px;line-height:1.2}
+.cal-two{display:flex;gap:22px}
+.cal-t{text-align:center;font-weight:600;font-size:14px;margin:4px 0 6px;height:24px;line-height:24px}
+.cal-g{display:grid;grid-template-columns:repeat(7,32px);gap:2px 0}
+.cal-wd{font-size:11.5px;color:var(--muted);text-align:center;padding:2px 0 4px}
+.cal-wd.we{color:var(--axis)}
+.cal-d{height:30px;border:0;border-radius:0;padding:0;background:transparent;color:var(--ink);font-size:13px;text-align:center;line-height:30px;font-variant-numeric:tabular-nums}
+.cal-d.has{font-weight:700}
+.cal-d.mon{color:var(--ink2);font-weight:400}
+.cal-d.off{color:var(--axis);cursor:default}
+.cal-d:not(.off):hover{background:var(--row-hover);filter:none}
+.cal-d.inr{background:var(--region-row)}
+.cal-d.end,.cal-d.end:not(.off):hover{background:var(--accent);color:#fff;border-radius:6px}
+.cal-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;padding-top:8px;border-top:1px solid var(--grid);font-size:13px}
+.cal-btns{display:flex;gap:6px}
+.cal-btns button{padding:5px 12px;font-size:13px}
+.cal-pre{display:flex;flex-direction:column;gap:6px;min-width:170px;padding-left:12px;border-left:1px solid var(--grid)}
+.cal-pre button{text-align:left;padding:7px 10px;font-size:13px;background:var(--region-row);border-color:transparent}
+.cal-pre button.on{background:var(--ink);color:var(--surface)}
+.per-tag{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;font-size:12px;background:var(--accent);color:#fff;white-space:nowrap}
+@media (max-width:760px){ .cal-wrap{flex-direction:column} .cal-two{flex-direction:column} .cal-pre{border-left:0;padding-left:0;flex-direction:row;flex-wrap:wrap} }
 .ms-btn{display:inline-flex;align-items:center;gap:8px;min-width:170px;max-width:300px;justify-content:space-between;text-align:left;padding:7px 10px;background:var(--card)}
 .ms-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ms-car{color:var(--muted);font-size:11px}
@@ -228,6 +259,8 @@ textarea.cmi{resize:none;line-height:1.35;overflow:hidden;white-space:pre-wrap}
         <p class="sub" id="subtitle">Загрузка данных…</p>
       </div>
       <div class="controls">
+        <div class="ms per" id="perBox"><button type="button" class="per-btn" aria-haspopup="dialog"></button><div class="ms-pop per-pop"></div></div>
+        <div class="ms" id="msMon"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
         <div class="ms" id="msReg"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
         <div class="ms" id="msFil"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
         <div class="ms" id="msNp"><button type="button" class="ms-btn" aria-haspopup="listbox"></button><div class="ms-pop" role="listbox" aria-multiselectable="true"></div></div>
@@ -379,7 +412,7 @@ const bucketOf=v=>v==null||!isFinite(v)?'na':v<0.8?'low':v<1?'mid':'high';
 const B=k=>BUCKETS.find(b=>b.k===k);
 const chip=(v,txt)=>{const b=bucketOf(v);return `<span class="chip b-${b}"><span class="ico">${B(b).ico}</span>${txt??pct(v)}</span>`};
 const fmt=v=>v==null?'—':nf0.format(Math.round(v));
-const fcChip=v=>v==null?'<span class="small">прогноз —</span>':`<span class="chip fcchip b-${bucketOf(v)}"><span class="ico">${B(bucketOf(v)).ico}</span>прогноз ${pct(v)}</span>`;
+const fcChip=v=>(S.model&&S.model.derived)?'':v==null?'<span class="small">прогноз —</span>':`<span class="chip fcchip b-${bucketOf(v)}"><span class="ico">${B(bucketOf(v)).ico}</span>прогноз ${pct(v)}</span>`;
 const unit=i=>IND[i].money?' ₸':'';
 const prevP=p=>{let y=Math.floor(p/100),m=p%100-1; if(m<1){m=12;y--;} return y*100+m;};
 const pName=p=>MONTHS[p%100-1]+' '+Math.floor(p/100);
@@ -460,6 +493,172 @@ function enrich(model){
   return model;
 }
 
+/* ---------------- период: календарь дат + список месяцев ---------------- */
+// S.per: {kind:'cur'} — текущий месяц с прогнозом;
+//        {kind:'range',x,y} — продажи с x по y (дни текущего месяца, считаются по ежедневным выгрузкам);
+//        {kind:'months',ps:[...]} — месяцы целиком (YYYYMM), можно несколько.
+// Выгрузка за дату D содержит продажи по D−1 включительно, поэтому продажи с x по y = выгрузка(y+1) − выгрузка(x).
+const daysInMonth=p=>new Date(Math.floor(p/100),p%100,0).getDate();
+const dayDiff=(a,b)=>Math.round((Date.UTC(+b.slice(0,4),+b.slice(5,7)-1,+b.slice(8,10))-Date.UTC(+a.slice(0,4),+a.slice(5,7)-1,+a.slice(8,10)))/864e5);
+const dNum=d=>Number(d.slice(8,10));
+const ymOf=d=>Number(d.slice(0,4))*100+Number(d.slice(5,7));
+const firstOf=p=>`${Math.floor(p/100)}-${String(p%100).padStart(2,'0')}-01`;
+const lastOf=p=>`${Math.floor(p/100)}-${String(p%100).padStart(2,'0')}-${String(daysInMonth(p)).padStart(2,'0')}`;
+const cap=t=>t[0].toUpperCase()+t.slice(1);
+const pTitle=p=>cap(pName(p));
+function monthsAvail(full){ const st=new Set(); full.emps.forEach(e=>Object.keys(e.m).forEach(p=>st.add(+p))); return [...st].filter(p=>p<=full.cur).sort((a,b)=>a-b); }
+function uploadDates(full){
+  return [...new Set([...S.snaps.values()].filter(x=>x.period===full.cur&&ymOf(x.date)===full.cur&&x.date<=full.date).map(x=>x.date).concat([full.date]))].sort(); }
+const lastSalesDay=full=>addDays(full.date,-1);            // последний день, продажи за который уже есть
+// границы: начало месяца (факт 0) и даты выгрузок
+function resolveRange(full,x,y){
+  const first=firstOf(full.cur), lastD=lastSalesDay(full);
+  if(y>lastD) y=lastD; if(x<first) x=first; if(x>y) x=y;
+  const B=[first,...uploadDates(full).filter(d=>d>first)];
+  let lo=first; for(const u of B) if(u<=x) lo=u;
+  let hi=null; for(const u of B) if(u>=addDays(y,1)){ hi=u; break; } if(!hi) hi=B[B.length-1];
+  return {x,y,lo,hi,from:lo,to:addDays(hi,-1),days:dayDiff(lo,hi),snapped:lo!==x||addDays(hi,-1)!==y};
+}
+const perKey=p=>p.kind==='cur'?'cur':p.kind==='months'?'m'+p.ps.join(','):'r'+p.x+'_'+p.y;
+function perValid(full,p){
+  if(p.kind==='cur') return true;
+  if(p.kind==='months'){ const av=monthsAvail(full); return p.ps.length>0&&p.ps.every(x=>av.includes(x)); }
+  return p.kind==='range'&&ymOf(p.x)===full.cur&&ymOf(p.y)===full.cur&&p.x<=lastSalesDay(full);
+}
+const rngTxt=(a,b)=>a===b?dShort(a):`${dShort(a)}–${dShort(b)}`;
+function monthsLbl(ps){ if(ps.length===1) return pTitle(ps[0]);
+  const run=ps.every((p,k)=>k===0||p===(()=>{let y=Math.floor(ps[k-1]/100),m=ps[k-1]%100+1; if(m>12){m=1;y++;} return y*100+m;})());
+  return run?`${cap(MONTHS[ps[0]%100-1])} – ${MONTHS[ps[ps.length-1]%100-1]} ${Math.floor(ps[ps.length-1]/100)}`:ps.map(p=>pShort(p)).join(', ')+' '+Math.floor(ps[ps.length-1]/100); }
+function perInfo(full,p){
+  const mg=MONTHS_GEN[full.cur%100-1], dim=daysInMonth(full.cur);
+  if(p.kind==='months'){ const lbl=monthsLbl(p.ps); const hasCur=p.ps.includes(full.cur);
+    return {lbl,title:`Выполнение за ${lbl}`,
+      note:(p.ps.length>1?'План и факт выбранных месяцев сложены. ':'Итог месяца. ')+(hasCur?`${cap(MONTHS[full.cur%100-1])} — на ${dFmt(full.date)}: факт на эту дату, план пропорционально прошедшим дням. `:'')+
+        `Сотрудники — те, у кого есть план на ${MONTHS[full.cur%100-1]}; регион и канал — по текущему месяцу.`}; }
+  const r=resolveRange(full,p.x,p.y);
+  const lbl=r.from===r.to?`${dShort(r.from)}`:`${dShort(r.from)}–${dShort(r.to)}`;
+  const base=r.lo===firstOf(full.cur)?'с начала месяца':`выгрузкой ${dShort(r.lo)}`;
+  return {lbl,r,days:r.days,dim,title:`Продажи за ${r.from===r.to?dLong(r.from):dShort(r.from)+' – '+dShort(r.to)}`,
+    note:(r.snapped?`Выбрано ${rngTxt(r.x,r.y)}, но выгрузки есть не за каждый день — показаны продажи ${rngTxt(r.from,r.to)}. `:'')+
+      `Факт — разница между выгрузкой ${dShort(r.hi)} и ${base} (выгрузка содержит продажи по предыдущий день). План на период — план ${mg} × ${r.days} из ${dim} дней.`}; }
+function derive(full,p){
+  const info=perInfo(full,p); const m=Object.assign({},full,{derived:true,base:full,per:Object.assign({kind:p.kind},info)});
+  const cur=full.cur;
+  if(p.kind==='months'){ const sh=elapsedShare(full.date,cur);
+    m.emps=full.emps.map(e=>({...e,ind:e.ind.map((x,i)=>{ let plan=null,fact=null;
+      for(const q of p.ps){ const a=e.m[q]; if(!a) continue; const pl=a[2*i], fa=a[2*i+1];
+        if(pl!=null) plan=(plan||0)+(q===cur&&p.ps.length>1?pl*sh:pl); if(fa!=null) fact=(fact||0)+fa; }
+      return {...x,plan,fact,pc:plan>0?(fact||0)/plan:null,fcPace:null,fc3:null,fcFact:null}; })}));
+  } else {
+    const r=info.r, first=firstOf(cur);
+    const has=new Map(); const hasI=(d,i)=>{ if(d===first||d===full.date) return true; const k=d+'|'+i; if(!has.has(k)){ const sn=S.snaps.get(d); has.set(k,!!sn&&snapHas(sn,i)); } return has.get(k); };
+    const factAt=(e,d,i)=>{ if(d===first) return 0; if(d===full.date){ const a=e.m[cur]; return a&&a[2*i+1]!=null?a[2*i+1]:0; } const a=S.snaps.get(d).v[e.L]; return a&&a[2*i+1]!=null?a[2*i+1]:0; };
+    const k=r.days/info.dim;
+    m.emps=full.emps.map(e=>({...e,ind:e.ind.map((x,i)=>{ const c=e.m[cur]; const mp=c?c[2*i]:null; const plan=mp>0?mp*k:mp;
+      const fact=hasI(r.hi,i)&&hasI(r.lo,i)?factAt(e,r.hi,i)-factAt(e,r.lo,i):null;
+      return {...x,plan,fact,pc:plan>0&&fact!=null?fact/plan:null,fcPace:null,fc3:null,fcFact:null}; })}));
+  }
+  return m;
+}
+function ensureModel(){
+  if(!S.model) return;
+  if(!S.model.derived) S.full=S.model;
+  const full=S.full; if(!S.per||!perValid(full,S.per)) S.per={kind:'cur'};
+  if(S.per.kind==='months'&&S.per.ps.length===1&&S.per.ps[0]===full.cur) S.per={kind:'cur'};
+  if(S.per.kind==='cur'){ S.model=full; return; }
+  const key=perKey(S.per)+'|'+full.date+'|'+S.snaps.size;
+  if(S.model.derived&&S.model.base===full&&S.model._k===key) return;
+  S.model=derive(full,S.per); S.model._k=key;
+}
+const isPer=()=>!!(S.model&&S.model.derived);
+const pcCell=v=>isPer()?chip(v):`<span class="pcbig">${pct(v)}</span>`;
+function withFull(fn){ return function(){ const sv=S.model; if(S.full&&sv&&sv.derived) S.model=S.full; try{ return fn.apply(this,arguments); } finally{ S.model=sv; } }; }
+function setPer(p){ S.per=p; $('perBox').classList.remove('open'); renderAll(); }
+
+/* --- календарь --- */
+const WD=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const nextP=p=>{let y=Math.floor(p/100),m=p%100+1; if(m>12){m=1;y++;} return y*100+m;};
+function parseRu(t){ const m=String(t||'').trim().match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/); if(!m) return null; let y=+m[3]; if(y<100) y+=2000;
+  const d=new Date(Date.UTC(y,+m[2]-1,+m[1])); if(d.getUTCMonth()!==+m[2]-1) return null; return d.toISOString().slice(0,10); }
+function dayState(full,d){ const p=ymOf(d), av=monthsAvail(full);
+  if(p===full.cur) return d<=lastSalesDay(full)?'day':'off';
+  return av.includes(p)?'month':'off'; }
+function perFromCal(full,x,y){            // что получится из выбранных дат
+  if(!x) return null; if(!y) y=x; if(x>y) [x,y]=[y,x];
+  if(ymOf(x)===full.cur&&ymOf(y)===full.cur) return {kind:'range',x,y};
+  const av=monthsAvail(full); const ps=av.filter(p=>p>=ymOf(x)&&p<=ymOf(y));
+  return ps.length?{kind:'months',ps}:null; }
+function calInit(){ const full=S.full, p=S.per||{kind:'cur'}; let x,y;
+  if(p.kind==='range'){ const r=resolveRange(full,p.x,p.y); x=r.x; y=r.y; }
+  else if(p.kind==='months'){ x=firstOf(p.ps[0]); y=p.ps[p.ps.length-1]===full.cur?lastSalesDay(full):lastOf(p.ps[p.ps.length-1]); }
+  else { x=firstOf(full.cur); y=lastSalesDay(full); }
+  const right=ymOf(y); S.cal={x,y,left:prevP(right)}; }
+function calMonth(full,p){
+  const y=Math.floor(p/100), m=p%100, dim=daysInMonth(p); const lead=(new Date(Date.UTC(y,m-1,1)).getUTCDay()+6)%7;
+  const c=S.cal, lo=c.x, hi=c.y||c.x;
+  let h=`<div class="cal-m"><div class="cal-t">${pTitle(p)}</div><div class="cal-g">`+WD.map((w,k)=>`<span class="cal-wd${k>4?' we':''}">${w}</span>`).join('')+'<span></span>'.repeat(lead);
+  for(let d=1; d<=dim; d++){ const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const st=dayState(full,iso);
+    const cls=['cal-d',st==='off'?'off':st==='month'?'mon':'has']; if(lo&&iso>=lo&&iso<=hi) cls.push('inr'); if(iso===lo||iso===hi) cls.push('end');
+    h+=st==='off'?`<span class="${cls.join(' ')}">${d}</span>`:`<button type="button" class="${cls.join(' ')}" data-d="${iso}"${st==='month'?' title="По этому месяцу есть только итог — выбор целого месяца"':''}>${d}</button>`; }
+  return h+'</div></div>'; }
+function calPreview(full){ const p=perFromCal(full,S.cal.x,S.cal.y); if(!p) return 'Выберите даты';
+  if(p.kind==='months') return `Будет показано: <b>${esc(monthsLbl(p.ps))}</b> — по прошлым месяцам есть только итог месяца`;
+  const r=resolveRange(full,p.x,p.y); return `Будет показано: продажи <b>${rngTxt(r.from,r.to)}</b>`+(r.snapped?` <span class="muted">(точнее по выгрузкам не разделить)</span>`:''); }
+function presets(full){
+  const L=lastSalesDay(full), first=firstOf(full.cur), ds=uploadDates(full);
+  const mon=d=>{ const t=new Date(Date.UTC(+d.slice(0,4),+d.slice(5,7)-1,dNum(d))); return addDays(d,-((t.getUTCDay()+6)%7)); };
+  const clampF=d=>d<first?first:d;
+  const prevUp=ds.length>1?ds[ds.length-2]:first;
+  const out=[
+    {t:`${cap(MONTHS[full.cur%100-1])} + прогноз`,p:{kind:'cur'}},
+    {t:'Последняя выгрузка',p:{kind:'range',x:prevUp<first?first:prevUp,y:L},sub:rngTxt(prevUp,L)},
+    {t:'Эта неделя',p:{kind:'range',x:clampF(mon(full.date)),y:L}},
+    {t:'Прошлая неделя',p:{kind:'range',x:clampF(addDays(mon(full.date),-7)),y:addDays(mon(full.date),-1)}},
+    {t:'Последние 7 дней',p:{kind:'range',x:clampF(addDays(L,-6)),y:L}},
+    {t:'С начала месяца',p:{kind:'range',x:first,y:L}},
+    {t:'Прошлый месяц',p:{kind:'months',ps:[prevP(full.cur)]}},
+    {t:'Последние 3 месяца',p:{kind:'months',ps:monthsAvail(full).filter(x=>x<full.cur).slice(-3)}}];
+  return out.filter(o=>perValid(full,o.p)&&(o.p.kind!=='range'||o.p.x<=o.p.y)); }
+function perPanel(){
+  const root=$('perBox'), full=S.full, c=S.cal, av=monthsAvail(full);
+  const right=nextP(c.left), canPrev=c.left>av[0], canNext=right<full.cur;
+  const cur=perKey(S.per||{kind:'cur'});
+  root.querySelector('.per-pop').innerHTML=`<div class="cal-wrap"><div class="cal-main">
+    <div class="cal-in"><label>📅<input type="text" id="calX" value="${c.x?dFmt(c.x):''}" placeholder="дд.мм.гггг"></label><span class="muted">—</span><label>📅<input type="text" id="calY" value="${c.y?dFmt(c.y):''}" placeholder="дд.мм.гггг"></label></div>
+    <div class="cal-nav"><button type="button" data-nav="-1" ${canPrev?'':'disabled'} aria-label="Раньше">‹</button><button type="button" data-nav="1" ${canNext?'':'disabled'} aria-label="Позже">›</button></div>
+    <div class="cal-two">${calMonth(full,c.left)}${calMonth(full,right)}</div>
+    <div class="cal-foot"><span id="calPrev">${calPreview(full)}</span><span class="cal-btns"><button type="button" data-act="cancel">Отмена</button><button type="button" class="primary" data-act="ok">✓ Применить</button></span></div>
+    <div class="ms-note">Жирные даты — есть ежедневные выгрузки (${MONTHS[full.cur%100-1]}, по ${dShort(lastSalesDay(full))}). Серые — прошлые месяцы: по ним только итог месяца целиком.</div>
+  </div><div class="cal-pre">${presets(full).map(o=>`<button type="button" class="${perKey(o.p)===cur?'on':''}" data-per='${esc(JSON.stringify(o.p))}'>${esc(o.t)}</button>`).join('')}</div></div>`; }
+function calRefresh(){
+  const root=$('perBox'), full=S.full, c=S.cal, av=monthsAvail(full); if(!root.querySelector('.cal-two')) return perPanel();
+  const right=nextP(c.left);
+  root.querySelector('.cal-two').innerHTML=calMonth(full,c.left)+calMonth(full,right);
+  root.querySelector('[data-nav="-1"]').disabled=!(c.left>av[0]); root.querySelector('[data-nav="1"]').disabled=!(right<full.cur);
+  $('calPrev').innerHTML=calPreview(full);
+  for(const [id,v] of [['calX',c.x],['calY',c.y]]){ const el=$(id); if(el&&document.activeElement!==el) el.value=v?dFmt(v):''; } }
+function renderPer(){
+  const root=$('perBox'); if(!root||!S.full) return; const full=S.full, p=S.per||{kind:'cur'};
+  const txt=p.kind==='cur'?`${cap(MONTHS[full.cur%100-1])} на ${dShort(full.date)} + прогноз`:p.kind==='months'?monthsLbl(p.ps):(()=>{ const r=resolveRange(full,p.x,p.y); return r.from===r.to?dFmt(r.from):`${dFmt(r.from)} – ${dFmt(r.to)}`; })();
+  root.querySelector('.per-btn').innerHTML=`<span class="ms-txt">📅 ${esc(txt)}</span><span class="ms-car">▾</span>`; root.classList.toggle('on',p.kind!=='cur'); }
+function calInput(){ const x=parseRu($('calX').value), y=parseRu($('calY').value);
+  if(x) S.cal.x=x; if(y) S.cal.y=y; if(S.cal.x&&S.cal.y&&S.cal.x>S.cal.y) [S.cal.x,S.cal.y]=[S.cal.y,S.cal.x];
+  const ry=ymOf(S.cal.y||S.cal.x); if(ry!==S.cal.left&&ry!==nextP(S.cal.left)) S.cal.left=Math.max(prevP(ry),monthsAvail(S.full)[0]); calRefresh(); }
+$('perBox').addEventListener('click',e=>{
+  const root=$('perBox'), full=S.full; if(!full) return;
+  if(e.target.closest('.per-btn')){ const open=!root.classList.contains('open'); msCloseAll(root); root.classList.toggle('open',open); if(open){ calInit(); perPanel(); } e.stopPropagation(); return; }
+  if(!e.target.closest('.per-pop')) return; e.stopPropagation();
+  const pr=e.target.closest('[data-per]'); if(pr){ setPer(JSON.parse(pr.dataset.per)); return; }
+  const nv=e.target.closest('[data-nav]'); if(nv){ const k=+nv.dataset.nav; S.cal.left=k>0?nextP(S.cal.left):prevP(S.cal.left); calRefresh(); return; }
+  const dd=e.target.closest('[data-d]'); if(dd){ let d=dd.dataset.d; const c=S.cal;
+    if(dd.classList.contains('mon')){ const p=ymOf(d); d=null; if(!c.x||c.y){ c.x=firstOf(p); c.y=lastOf(p); } else { if(firstOf(p)<c.x){ c.y=c.x; c.x=firstOf(p);} else c.y=lastOf(p); } calRefresh(); return; }
+    if(!c.x||c.y){ c.x=d; c.y=null; } else if(d<c.x){ c.y=c.x; c.x=d; } else c.y=d; calRefresh(); return; }
+  const act=e.target.closest('[data-act]'); if(act){ if(act.dataset.act==='cancel'){ root.classList.remove('open'); return; }
+    if($('calX')) calInput(); const p=perFromCal(full,S.cal.x,S.cal.y); if(p) setPer(p); return; }
+});
+$('perBox').addEventListener('keydown',e=>{ if(e.target.matches&&e.target.matches('#calX,#calY')&&e.key==='Enter'){ e.preventDefault(); calInput(); } });
+$('perBox').addEventListener('change',e=>{ if(e.target.matches&&e.target.matches('#calX,#calY')) calInput(); });
+
 /* ---------------- state ---------------- */
 const S={regs:new Set(),chans:new Set(),fils:new Set(),nps:new Set(),shows:new Set(),inds:new Set(),pcts:new Set(),focus:new Set(),pctInd:1,model:null,snaps:new Map(),reg:'',chan:'',q:'',show:'',ind:'',sort:{k:'reg',dir:1},distBy:'avg',
   db:null,base:null,source:'файлы',view:'svodka',comments:new Map(),cmPending:0,empOrder:[],card:null};
@@ -476,6 +675,7 @@ function agg(list,i){
   const mon=m.m3.map(p=>{let pl=0,fa=0; for(const e of list){const a=e.m[p]; if(a&&a[2*i]>0){pl+=a[2*i]; fa+=a[2*i+1]||0;}} return pl>0?fa/pl:null;});
   const v=mon.filter(x=>x!=null); const avg=v.length?v.reduce((s,x)=>s+x,0)/v.length:null;
   const pc=plan>0?fact/plan:null;
+  if(m.derived) return {plan:has?plan:null,fact:has?fact:null,pc,fcPace:null,fc3:null,fcFact:null,avg,mon};
   return {plan:has?plan:null,fact:has?fact:null,pc,fcPace:pc!=null&&m.share>0?pc/m.share:null,fc3:plan>0?fcF/plan:null,fcFact:fcF,avg,mon};
 }
 function sortedRegions(){ return [...new Set(S.model.emps.map(e=>e.reg))].sort((a,b)=>(a===DRB)-(b===DRB)||a.localeCompare(b,'ru')); }
@@ -485,7 +685,7 @@ const chIdx=c=>{const i=CH_ORDER.indexOf(c); return i<0?99:i;};
 function curSnaps(){ return [...S.snaps.values()].filter(s=>s.period===S.model.cur).sort((a,b)=>a.date.localeCompare(b.date)); }
 function snapHas(s,i){ for(const k in s.v){ const a=s.v[k]; if(a&&a[2*i+1]!=null) return true; } return false; }
 function prevSnap(i){ const list=curSnaps().filter(s=>s.date<S.model.date&&snapHas(s,i)); return list.length?list[list.length-1]:null; }
-const isLag=x=>x.fc3!=null&&x.fc3<0.8, isLow3=x=>x.avg!=null&&x.avg<0.8;
+const isLag=x=>isPer()?(x.pc!=null&&x.pc<0.8):(x.fc3!=null&&x.fc3<0.8), isLow3=x=>x.avg!=null&&x.avg<0.8;
 
 /* ---------------- comments: история записей ----------------
    Каждый комментарий — отдельная запись {L, period, text, at, by}. Ничего не перезаписывается:
@@ -600,15 +800,30 @@ function subscribeComments(){
 function bucketLegend(){ return BUCKETS.slice(0,3).map(b=>`<span class="chip b-${b.k}"><span class="ico">${b.ico}</span>${b.label}</span>`).join(''); }
 
 function renderHeader(){
+  ensureModel(); renderPer();
   const m=S.model;
   $('subtitle').innerHTML=`Данные на <b>${dFmt(m.date)}</b> · ${pName(m.cur)}, прошло ${Math.round(m.share*100)}% дней · база прогноза — ${m.m3.map(pShort).join(', ')} · ${S.model.emps.length} сотрудников с планом на ${pShort(m.cur)}`+updLabel();
   $("curTitle").textContent=`Выполнение на ${dLong(m.date)} и прогноз на конец месяца`;
   $('curNote').textContent=`Прогноз: к факту на сегодня добавляется план на оставшиеся ${Math.round((1-m.share)*100)}% месяца, умноженный на среднее выполнение сотрудника за ${m.m3.map(pShort).join(', ')}.`;
   $('legendFc').innerHTML=bucketLegend()+'<span class="muted">цвет — по прогнозу</span>';
+  if(m.derived){ $('subtitle').innerHTML+=`<span class="per-tag">${esc(m.per.lbl)}</span>`; $('curTitle').textContent=m.per.title; $('curNote').textContent=m.per.note;
+    $('legendFc').innerHTML=bucketLegend()+'<span class="muted">цвет — по % за период</span>'; }
 }
 
 function renderTiles(){
   const list=filtered();
+  if(isPer()){ const P=S.model.per;
+    $('tiles').innerHTML=IND.map((ind,i)=>{ const a=agg(list,i); const withPlan=list.filter(e=>e.ind[i].plan>0); const low=withPlan.filter(e=>isLag(e.ind[i])).length, zero=withPlan.filter(e=>!(e.ind[i].fact>0)).length;
+      return `<div class="tile">
+      <div class="t-name"><span class="swatch" style="background:${ind.color}"></span>${ind.name}</div>
+      <div class="t-lbl">${esc(P.lbl)}</div>
+      <div class="t-big">${a.fact==null?'—':pct(a.pc)}</div>
+      <div class="t-line">факт <b>${fmt(a.fact)}</b> из ${fmt(a.plan)}${unit(i)}</div>
+      <div class="t-fc">${a.fact==null?'<span class="small">нет выгрузки по этому показателю</span>':chip(a.pc,BUCKETS.find(x=>x.k===bucketOf(a.pc)).label)}</div>
+      <div class="t-sep"></div>
+      <div class="t-line">ниже 80%: <b>${a.fact==null?'—':low}</b> из ${withPlan.length} чел.</div>
+      <div class="t-line muted">без продаж за период: ${a.fact==null?'—':zero} · среднее за 3 мес. ${pct(a.avg)}</div>
+    </div>`; }).join(''); return; }
   $('tiles').innerHTML=IND.map((ind,i)=>{
     const a=agg(list,i); const ps=prevSnap(i); let dl='';
     if(ps){ let d=0,any=false; for(const e of list){ const o=ps.v[e.L]; if(o&&o[2*i+1]!=null){ d+=(e.ind[i].fact||0)-o[2*i+1]; any=true; } }
@@ -631,15 +846,16 @@ function renderTiles(){
 function renderRC(){
   const m=S.model; const list=filtered(); const regs=sortedRegions().filter(r=>r!==DRB&&regOk({reg:r}));
   $('rcNote').textContent=`Сверху — % выполнения на ${dFmt(m.date)}, под ним — прогноз на конец ${MONTHS_GEN[m.cur%100-1]} с учётом выполнения за ${m.m3.map(pShort).join(', ')} (цвет по прогнозу). Тенге — полные суммы.`;
-  let h=`<thead><tr><th class="l sticky" rowspan="2">Регион / канал</th><th rowspan="2">Сотр.</th><th rowspan="2" title="Прогноз ниже 80% хотя бы по одному показателю">Прогноз<br>&lt;80%</th>`+
+  let h=`<thead><tr><th class="l sticky" rowspan="2">Регион / канал</th><th rowspan="2">Сотр.</th>${isPer()?'<th rowspan="2" title="Ниже 80% за период хотя бы по одному показателю">&lt;80%<br>за период</th>':'<th rowspan="2" title="Прогноз ниже 80% хотя бы по одному показателю">Прогноз<br>&lt;80%</th>'}`+
     IND.map(ind=>`<th class="grp" colspan="3"><span class="swatch" style="background:${ind.color};margin-right:6px"></span>${ind.name}</th>`).join('')+`</tr><tr>`+
-    IND.map(()=>`<th class="sep">План</th><th>Факт сейчас</th><th>% сейчас<br><span class="muted" style="font-weight:400">прогноз</span></th>`).join('')+`</tr></thead><tbody>`;
+    IND.map(()=>isPer()?`<th class="sep">План</th><th>Факт</th><th>% за период</th>`:`<th class="sep">План</th><th>Факт сейчас</th><th>% сейчас<br><span class="muted" style="font-weight:400">прогноз</span></th>`).join('')+`</tr></thead><tbody>`;
   const row=(cls,label,L)=>{ const lag=L.filter(e=>e.ind.some(isLag)).length;
     return `<tr class="${cls}"><td class="l sticky">${label}</td><td>${L.length}</td><td>${lag?`<span class="chip b-low">${lag}</span>`:'0'}</td>`+IND.map((_,i)=>{const a=agg(L,i);
-      return `<td class="sep">${fmt(a.plan)}</td><td>${fmt(a.fact)}</td><td><span class="pcbig">${pct(a.pc)}</span>${fcChip(a.fc3)}</td>`;}).join('')+`</tr>`; };
+      return `<td class="sep">${fmt(a.plan)}</td><td>${fmt(a.fact)}</td><td>${pcCell(a.pc)}${fcChip(a.fc3)}</td>`;}).join('')+`</tr>`; };
   const block=r=>{ const LR=list.filter(e=>e.reg===r); if(!LR.length) return;
     h+=row('reg',esc(regLabel(r)),LR);
     for(const c of sortedChans(LR)) h+=row('',`<span style="padding-left:16px">${esc(c)}</span>`,LR.filter(e=>e.chan===c)); };
+  if(isPer()) $('rcNote').textContent=`${S.model.per.lbl}: план, факт и % выполнения за период. ${S.model.per.note} Тенге — полные суммы.`;
   regs.forEach(block);
   if(regs.length>1){ const LRg=list.filter(e=>e.reg!==DRB); if(LRg.length) h+=row('total','Итого по регионам',LRg); }
   const LD=list.filter(e=>e.reg===DRB); const hasR=list.some(e=>e.reg!==DRB);
@@ -649,10 +865,11 @@ function renderRC(){
 
 function renderDist(){
   const list=filtered(); const byChan=!!oneReg(); const keys=byChan?sortedChans(list):sortedRegions().filter(r=>list.some(e=>e.reg===r));
-  const by=S.distBy; const val=(e,i)=>by==='avg'?e.ind[i].avg:e.ind[i].fc3;
+  const by=S.distBy; const val=(e,i)=>by==='avg'?e.ind[i].avg:isPer()?e.ind[i].pc:e.ind[i].fc3;
+  const fb=document.querySelector('#distBy [data-by="fc3"]'); if(fb) fb.textContent=isPer()?'% за период':'Прогноз на месяц';
   document.querySelectorAll('#distBy button').forEach(b=>b.classList.toggle('on',b.dataset.by===by));
   $('distTitle').textContent=(byChan?`Группы выполнения по каналам: ${regLabel(oneReg())}`:'Группы выполнения по регионам и ДРБ');
-  $('distNote').textContent=(by==='avg'?`Сотрудники по среднему выполнению за ${S.model.m3.map(pShort).join(', ')}.`:`Сотрудники по прогнозу на конец ${MONTHS_GEN[S.model.cur%100-1]}.`)+' Нажмите на отрезок — откроется список этих сотрудников.';
+  $('distNote').textContent=(by==='avg'?`Сотрудники по среднему выполнению за ${S.model.m3.map(pShort).join(', ')}.`:(isPer()?`Сотрудники по % выполнения: ${S.model.per.lbl}.`:`Сотрудники по прогнозу на конец ${MONTHS_GEN[S.model.cur%100-1]}.`))+' Нажмите на отрезок — откроется список этих сотрудников.';
   $('dist').innerHTML=IND.map((ind,i)=>{
     const rows=keys.map(k=>{ const L=list.filter(e=>(byChan?e.chan:e.reg)===k&&e.ind[i].plan>0); if(!L.length) return '';
       const cnt={low:0,mid:0,high:0,na:0}; L.forEach(e=>cnt[bucketOf(val(e,i))]++); const tot=L.length;
@@ -664,7 +881,7 @@ function renderDist(){
 
 function renderNotes(){
   const m=S.model;
-  $('notes').innerHTML=[
+  $('notes').innerHTML=(isPer()?[`<b>Выбран период «${esc(m.per.lbl)}».</b> ${esc(m.per.note)} Прогноз на конец месяца в этом режиме не показывается — вернуться к нему: «Период» → текущий месяц.`]:[]).concat([
     `В анализе — только сотрудники ${MONTHS_GEN[m.cur%100-1]}, у которых есть план хотя бы по одному показателю (${m.emps.length} чел.). Регион, канал и подразделение — по ${pShort(m.cur)}.`,
     `Факт на сейчас — из последней выгрузки (${dFmt(m.date)}); выгрузка содержит факт за полные прошедшие дни, то есть прошло ${Math.round(m.share*100)}% месяца.`,
     `<b>Прогноз с учётом 3 месяцев</b> = (факт сейчас + план × доля оставшихся дней × среднее выполнение за ${m.m3.map(pShort).join(', ')}) / план. Пример: выполнено 40% плана, прошла половина месяца, обычно сотрудник делает 90% → прогноз 40% + 0,5 × 90% = 85%. Если истории нет, вместо среднего берётся текущий темп. Для региона и канала прогнозы сотрудников складываются в тенге/штуках и делятся на общий план.`,
@@ -672,7 +889,7 @@ function renderNotes(){
     `Среднее за 3 месяца — среднее арифметическое месячных процентов; месяц без плана в него не входит. Группы: ниже 80%, 80–100%, 100% и выше.`,
     `ДРБ (СОВО и Online Sales) не относится к регионам: показан отдельно, в «Итого по регионам» не входит. Канал Online churn не учитывается.`,
     `Комментарии привязаны к сотруднику и месяцу. ${S.seed&&S.seed.period===m.cur?`Поле заполнено текущим комментарием (изначально — из файла анализа ШПД). Исправьте текст и нажмите «OK» (или Enter): новая версия сохранится с датой и временем, прежняя — в истории изменений в карточке сотрудника. `:''}${S.db?'Они сохраняются для всех, кто открывает эту страницу, и обновляются у всех сразу.':S.remote?'Они записываются в общую Google-таблицу: видны всем, кто открывает ссылку, обновляются раз в минуту; у каждой записи — имя автора и время.':'В этой версии страницы они хранятся в браузере, на котором введены; чтобы передать их, скачайте Excel.'}`
-  ].map(x=>`<li>${x}</li>`).join('');
+  ]).map(x=>`<li>${x}</li>`).join('');
 }
 
 /* ----- employees ----- */
@@ -712,7 +929,7 @@ function empList(){
   else if(k==='fil') cmp=(a,b)=>dir*(a.filN||'').localeCompare(b.filN||'','ru')||base(a,b);
   else if(k==='np') cmp=(a,b)=>dir*(a.npN||'').localeCompare(b.npN||'','ru')||base(a,b);
   else if(k==='cm'){ const t=e=>{const x=cmList(e.L)[0]; return x?(x.at||'0'):'';}; cmp=(a,b)=>{const x=t(a),y=t(b); if(!x&&!y) return base(a,b); if(!x) return 1; if(!y) return -1; return dir*y.localeCompare(x)||base(a,b);}; }
-  else { const t=k[0], i=+k.slice(1); const g=e=>t==='f'?e.ind[i].pc:t==='p'?e.ind[i].fc3:t==='l'?(e.ind[i].plan>0?e.ind[i].plan:null):t==='v'?(e.ind[i].plan>0?e.ind[i].fact:null):e.ind[i].avg;
+  else { const t=k[0], i=+k.slice(1); const g=e=>t==='f'?e.ind[i].pc:t==='p'?(isPer()?e.ind[i].pc:e.ind[i].fc3):t==='l'?(e.ind[i].plan>0?e.ind[i].plan:null):t==='v'?(e.ind[i].plan>0?e.ind[i].fact:null):e.ind[i].avg;
     cmp=(a,b)=>{const x=g(a),y=g(b); if(x==null&&y==null) return base(a,b); if(x==null) return 1; if(y==null) return -1; return dir*(x-y)||base(a,b);}; }
   return L.sort(cmp);
 }
@@ -723,12 +940,13 @@ function renderEmps(){
   $('empCount').textContent=`Показано ${L.length} из ${filtered().length}`;
   $('empNote').innerHTML=`По каждому показателю: план, факт по последним выгрузкам (под цифрой — прирост с предыдущей выгрузки, <span class="nodyn">+0</span> — динамики нет), % выполнения на сейчас и под ним прогноз (${bucketLegend()}). Нажмите на строку — карточка сотрудника.`;
   const IS=S.focus.size?[...S.focus].map(Number).sort():[0,1,2,3];
-  const DS=IND.map((_,i)=>dynSnaps(i).length?dayCols(i):[]);
+  const DS=IND.map((_,i)=>!isPer()&&dynSnaps(i).length?dayCols(i):[]);
+  if(isPer()) $('empNote').innerHTML=`<b>${esc(S.model.per.lbl)}</b>: план, факт и % выполнения за период (${bucketLegend()}). ${esc(S.model.per.note)} Нажмите на строку — карточка сотрудника.`;
   const hd=`<thead><tr><th class="sticky" rowspan="2">№</th>${sortHead('fio','Сотрудник','l sticky st1" rowspan="2')}${sortHead('reg','Регион','l" rowspan="2')}${sortHead('chan','Канал','l" rowspan="2')}${sortHead('fil','ОДТ / филиал','l" rowspan="2')}${sortHead('np','Город / н.п.','l" rowspan="2')}`+
     IS.map(i=>`<th class="grp" colspan="${2+Math.max(1,DS[i].length)}"><span class="swatch" style="background:${IND[i].color};margin-right:6px"></span>${IND[i].name}</th>`).join('')+
     `${sortHead('cm','Комментарий','l sep" rowspan="2')}</tr><tr>`+IS.map(i=>sortHead('l'+i,'План','sep')+
       (DS[i].length?DS[i].map((d,j)=>{ const lbl=`Факт<br>на ${dShort(d.date)}${d.sn?'':'<br><span class="small nodyn">нет выгрузки</span>'}`; return j===DS[i].length-1&&d.sn?sortHead('v'+i,lbl,'dyn'):`<th class="dyn">${lbl}</th>`; }).join(''):sortHead('v'+i,'Факт'))+
-      sortHead('p'+i,'% выполн.<br><span class="muted" style="font-weight:400">прогноз</span>')).join('')+`</tr></thead>`;
+      sortHead('p'+i,isPer()?'% выполн.':'% выполн.<br><span class="muted" style="font-weight:400">прогноз</span>')).join('')+`</tr></thead>`;
   const dynCell=(e,i,d,last)=>{ if(!d.sn) return `<td class="dyn muted" title="Нет выгрузки за ${dShort(d.date)}">—</td>`; const v=snapFact(d.sn,e.L,i); if(v==null) return `<td class="dyn muted">—</td>`;
     const pv=d.prev?snapFact(d.prev,e.L,i):null; const inc=pv!=null?v-pv:null;
     const incH=inc==null?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn" title="Нет прироста с ${dShort(d.prev.date)}">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
@@ -736,7 +954,7 @@ function renderEmps(){
   const rows=L.map((e,n)=>{
     return `<tr data-l="${esc(e.L)}"><td class="no sticky">${n+1}</td><td class="l who sticky st1"><b>${esc(e.fio||e.L)}</b><span class="small">${esc(e.L)}</span></td><td class="l">${esc(e.reg===DRB?'ДРБ':e.reg)}</td><td class="l">${esc(e.chan)}</td><td class="l wrapc">${esc(e.filN)}</td><td class="l wrapc">${esc(e.npN)}</td>`+
       IS.map(i=>{ const x=e.ind[i]; const dyn=DS[i].length?DS[i].map((d,j)=>dynCell(e,i,d,j===DS[i].length-1)).join(''):`<td>${fmt(x.fact)}</td>`;
-        return x.plan>0?`<td class="sep">${fmt(x.plan)}</td>${dyn}<td><span class="pcbig">${pct(x.pc)}</span>${fcChip(x.fc3)}<span class="small">3 мес ${pct(x.avg)}</span></td>`
+        return x.plan>0?`<td class="sep">${fmt(x.plan)}</td>${dyn}<td>${pcCell(x.pc)}${fcChip(x.fc3)}<span class="small">3 мес ${pct(x.avg)}</span></td>`
         :`<td class="sep muted">нет плана</td>${dyn}<td class="muted">—</td>`; }).join('')+
       `<td class="cmc sep">${cmForm(e.L,false)}</td></tr>`; }).join('');
   // строка «Итого» по отобранным сотрудникам
@@ -748,9 +966,9 @@ function renderEmps(){
     if(!any) return `<td class="dyn muted">—</td>`;
     const incH=!anyInc?'':inc>0?`<span class="small delta-up">+${fmt(inc)}</span>`:inc===0?`<span class="small nodyn">+0</span>`:`<span class="small delta-down">${fmt(inc)}</span>`;
     return `<td class="dyn${last?' lastd':''}">${last?`<b>${fmt(v)}</b>`:fmt(v)}${incH}</td>`; };
-  const tot=L.length?`<tr class="tot"><td class="no sticky"></td><td class="l who sticky st1"><b>Итого: ${L.length} сотр.</b><span class="small">${esc(filt.join(' · '))}</span></td><td class="l"></td><td class="l"></td><td class="l"></td><td class="l"></td>`+
+  const tot=L.length?`<tr class="tot"><td class="no sticky"></td><td class="l who sticky st1"><b>Итого: ${L.length} сотр.</b><span class="small">${esc((isPer()?[S.model.per.lbl]:[]).concat(filt).join(' · '))}</span></td><td class="l"></td><td class="l"></td><td class="l"></td><td class="l"></td>`+
     IS.map(i=>{ const a=agg(L,i); const dyn=DS[i].length?DS[i].map((d,j)=>totDyn(i,d,j===DS[i].length-1)).join(''):`<td><b>${fmt(a.fact)}</b></td>`;
-      return `<td class="sep"><b>${fmt(a.plan)}</b></td>${dyn}<td><span class="pcbig">${pct(a.pc)}</span>${fcChip(a.fc3)}<span class="small">3 мес ${pct(a.avg)}</span></td>`; }).join('')+
+      return `<td class="sep"><b>${fmt(a.plan)}</b></td>${dyn}<td>${pcCell(a.pc)}${fcChip(a.fc3)}<span class="small">3 мес ${pct(a.avg)}</span></td>`; }).join('')+
     `<td class="cmc sep l"><span class="small">с комментариями: ${L.filter(e=>hasCm(e.L)).length}</span></td></tr>`:'';
   $('empTable').innerHTML=hd+'<tbody>'+tot+rows+'</tbody>';
   requestAnimationFrame(()=>{ const th=$('empTable').querySelector('thead'); const h=th?th.offsetHeight:0; $('empTable').querySelectorAll('tr.tot td').forEach(td=>{ td.style.top=h+'px'; }); });
@@ -795,7 +1013,7 @@ const inMonth=s=>Number(s.date.slice(0,4))*100+Number(s.date.slice(5,7))===S.mod
 function renderDyn(){
   const m=S.model, list=filtered(), snaps=curSnaps();
   $('dynTitle').textContent=`Динамика за ${pName(m.cur)}: накопленное выполнение по выгрузкам`;
-  $('dynNote').textContent='Точки — выгрузки, пунктир от последней точки — прогноз на конец месяца с учётом 3 мес. Серый пунктир — равномерный темп. Новая точка появляется после загрузки свежей выгрузки.';
+  $('dynNote').textContent=(S.per&&S.per.kind!=='cur'?'Выбранный период на эту вкладку не влияет: здесь всегда весь текущий месяц. ':'')+'Точки — выгрузки, пунктир от последней точки — прогноз на конец месяца с учётом 3 мес. Серый пунктир — равномерный темп. Новая точка появляется после загрузки свежей выгрузки.';
   $('legendDyn').innerHTML=chartLegend();
   const ser=IND.map((_,i)=>{ const pts=[]; for(const s of snaps){ if(!snapHas(s,i)||!inMonth(s)) continue; let pl=0,fa=0,n=0;
       for(const e of list){ const a=s.v[e.L]; if(a&&a[2*i]!=null){ pl+=a[2*i]; fa+=a[2*i+1]||0; n++; } }
@@ -854,6 +1072,11 @@ function cnts(list,key){ const c=new Map(); list.forEach(e=>{ const v=e[key]; if
   return [...c.entries()].sort((a,b)=>a[0].localeCompare(b[0],'ru')).map(([v,n])=>({v,t:`${v} (${n})`,s:v})); }
 const SHOW_OPTS=[{v:'lag',t:'Прогноз ниже 80%'},{v:'low3',t:'Ниже 80% в среднем за 3 мес.'},{v:'nodyn',t:'Нет динамики (факт не вырос за последние 3 рабочих дня)'},{v:'cm',t:'С комментарием'},{v:'nocm',t:'Без комментария'}];
 const MSDEF={
+  mon:{el:'msMon',all:'Месяц: текущий',label:'Месяцы',search:true,note:'Можно отметить несколько месяцев — план и факт сложатся.',
+    opts:()=>{ const f=S.full||S.model; return monthsAvail(f).slice().reverse().map(p=>({v:p,t:`${p} · ${pName(p)}${p===f.cur?` (на ${dShort(f.date)})`:''}`,s:pTitle(p)})); },
+    get:()=>S.per&&S.per.kind==='months'?new Set(S.per.ps):new Set(),
+    set:v=>{ const ps=[...v].map(Number).sort((a,b)=>a-b); S.per=ps.length?{kind:'months',ps}:{kind:'cur'}; },
+    after:()=>{ renderAll(); }},
   reg:{el:'msReg',all:'Регионы + ДРБ',label:'Регионы',opts:()=>sortedRegions().map(r=>({v:r,t:r===DRB?'ДРБ (СОВО, Online Sales)':r})),get:()=>S.regs,set:v=>{S.regs=v;},
     quick:[{t:'Только регионы',f:()=>new Set(sortedRegions().filter(r=>r!==DRB))}],after:()=>{ renderView(); }},
   chan:{el:'msChan',all:'Все каналы',label:'Каналы',opts:()=>sortedChans(S.model.emps.filter(regOk)).map(c=>({v:c,t:c})),get:()=>S.chans,set:v=>{S.chans=v;},after:()=>{ renderView(); }},
@@ -861,7 +1084,7 @@ const MSDEF={
   np:{el:'msNp',all:'Все города / н.п.',label:'Города',search:true,opts:()=>cnts(S.model.emps.filter(e=>regOk(e)&&(!S.chans.size||S.chans.has(e.chan))&&filOk(e)),'npN'),get:()=>S.nps,set:v=>{S.nps=v;},after:()=>{ renderFilters(); renderView(); }},
   show:{el:'msShow',all:'Все сотрудники',label:'Условия',note:'Отмеченные условия выполняются одновременно',opts:()=>SHOW_OPTS,get:()=>S.shows,set:v=>{S.shows=v;},after:()=>{ renderFilters(); renderEmps(); }},
   ind:{el:'msInd',all:'по любому показателю',label:'Показатели',note:'Для условий «прогноз», «ниже 80%», «нет динамики»: достаточно любого из отмеченных',opts:()=>IND.map((ind,i)=>({v:i,t:'по '+ind.name})),get:()=>S.inds,set:v=>{S.inds=v;},after:()=>{ renderEmps(); }},
-  pct:{el:'msPct',all:'Выполнение сейчас: все',label:'Выполнение',opts:()=>{ const c=pctCounts(); return PCT_BUCKETS.map(b=>({v:b.k,t:`${b.t} (${c[b.k]||0} чел.)`,s:b.t})); },get:()=>S.pcts,set:v=>{S.pcts=v;},
+  pct:{el:'msPct',get all(){ return isPer()?'Выполнение за период: все':'Выполнение сейчас: все'; },label:'Выполнение',opts:()=>{ const c=pctCounts(); return PCT_BUCKETS.map(b=>({v:b.k,t:`${b.t} (${c[b.k]||0} чел.)`,s:b.t})); },get:()=>S.pcts,set:v=>{S.pcts=v;},
     after:()=>{ if(S.pcts.size&&S.focus.size&&!S.focus.has(+S.pctInd)){ S.focus.add(+S.pctInd); renderFilters(); } renderEmps(); }}
 };
 function msRender(key){ const d=MSDEF[key], root=$(d.el); if(!root) return; const sel=d.get(); const opts=d.opts(); const ch=opts.filter(o=>sel.has(o.v));
@@ -904,8 +1127,9 @@ function setView(v){ if(!['svodka','sotrudniki','dinamika'].includes(v)) v='svod
   try{ if(location.hash!=='#'+v) history.replaceState(null,'','#'+v); }catch(e){}
   window.scrollTo(0,0); renderView(); }
 $('nav').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b) setView(b.dataset.v); });
-function renderView(){ if(!S.model) return; if(S.view==='svodka'){ renderTiles(); renderRC(); renderDist(); renderNotes(); } else if(S.view==='sotrudniki') renderEmps(); else renderDyn(); if(S.card) renderCard(); }
-function renderAll(){ cmIndex(); renderHeader(); renderFilters(); renderView(); }
+function renderView(){ if(!S.model) return; ensureModel(); if(S.view==='svodka'){ renderTiles(); renderRC(); renderDist(); renderNotes(); } else if(S.view==='sotrudniki') renderEmps(); else renderDyn(); if(S.card) renderCard(); }
+renderDyn=withFull(renderDyn); renderCard=withFull(renderCard);
+function renderAll(){ ensureModel(); cmIndex(); renderHeader(); renderFilters(); renderView(); }
 
 window.addEventListener('hashchange',()=>setView(location.hash.slice(1)));
 $('fSearch').addEventListener('input',e=>{S.q=e.target.value; clearTimeout(S._qt); S._qt=setTimeout(renderEmps,150);});
@@ -943,7 +1167,7 @@ document.addEventListener('mousemove',e=>{ const t=e.target.closest&&e.target.cl
    Собирает data.json в том же формате, что и исходный: строки продаж (tg) и объёмов (vol) по месяцам,
    все выгрузки текущего месяца (snaps) и последний комментарий по каждому сотруднику. */
 function buildGithubData(){
-  const m=S.model; const tg=[],vol=[];
+  const m=S.full||S.model; const tg=[],vol=[];
   for(const e of m.emps){ for(const [p,a] of Object.entries(e.m)){ const P=Number(p); if(!a) continue;
     if(a[0]!=null||a[1]!=null) tg.push([P,e.reg,e.fil||'',e.L,e.fio||'',e.chan,a[0]||0,a[1]||0]);
     if([2,3,4,5,6,7].some(k=>a[k]!=null)) vol.push([P,e.reg,e.fil||'',e.fio||'',e.L,e.chan,e.np||'',a[2]||0,a[3]||0,a[4]||0,a[5]||0,a[6]||0,a[7]||0]); } }
@@ -966,6 +1190,7 @@ $('btnExport').addEventListener('click',async()=>{
     await loadXLSX(); const m=S.model; const L=empList();
     const cols=[['№',(e,n)=>n+1],['ФИО',e=>e.fio],['Логин',e=>e.L],['Регион',e=>e.reg],['Канал',e=>e.chan],['ОДТ / филиал',e=>e.filN],['Город / н.п.',e=>e.npN]];
     IND.forEach((ind,i)=>{ const x=e=>e.ind[i];
+      if(m.derived){ const lb=m.per.lbl; cols.push([`${ind.name}: план (${lb})`,e=>x(e).plan>0?Math.round(x(e).plan):null,'#,##0'],[`${ind.name}: факт (${lb})`,e=>x(e).plan>0?x(e).fact:null,'#,##0'],[`${ind.name}: % (${lb})`,e=>x(e).pc,'0%'],[`${ind.name}: ср. 3 мес.`,e=>x(e).avg,'0%']); return; }
       cols.push([`${ind.name}: план`,e=>x(e).plan>0?x(e).plan:null,'#,##0']);
       for(const d of dayCols(i)) cols.push([`${ind.name}: факт на ${dShort(d.date)}${d.sn?'':' (нет выгрузки)'}`,e=>d.sn?snapFact(d.sn,e.L,i):null,'#,##0']);
       cols.push([`${ind.name}: % на ${dShort(m.date)}`,e=>x(e).pc,'0%'],[`${ind.name}: прогноз (3 мес.)`,e=>x(e).fc3,'0%'],[`${ind.name}: ср. 3 мес.`,e=>x(e).avg,'0%']); });
